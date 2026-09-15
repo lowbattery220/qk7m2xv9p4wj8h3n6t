@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>シャドーイング・プレーヤー</title>
+<style>
+  :root {
+    --paper: #FBF7EF;
+    --panel: #F1EAD9;
+    --panel-border: #E2D8BF;
+    --ink: #22201B;
+    --ink-muted: #726C5E;
+    --accent: #1F6E62;
+    --accent-ink: #F3EFE2;
+    --gold: #C98A2C;
+    --row-hover: #E9E1CC;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  .top-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--paper);
+    border-bottom: 1px solid var(--panel-border);
+  }
+
+  header {
+    padding: 16px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  h1.brand {
+    font-family: "Iowan Old Style", "Palatino Linotype", "URW Palladio", P052, serif;
+    font-weight: 600;
+    font-size: 23px;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    letter-spacing: 0.01em;
+  }
+  .brand-mark { color: var(--accent); flex-shrink: 0; }
+  .brand-main { color: var(--ink); }
+  .brand-sub { color: var(--ink-muted); font-weight: 400; margin-left: 6px; }
+  .header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .load-bar { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-muted); }
+  button.chip {
+    font-size: 13px;
+    padding: 7px 14px;
+    border-radius: 7px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  button.chip:hover { background: var(--row-hover); }
+
+  /* Player bar (sticky, horizontal) */
+  .player-bar {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 14px 28px;
+    border-top: 1px solid var(--panel-border);
+    flex-wrap: wrap;
+  }
+  .player-bar .now {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex: 1;
+    min-width: 220px;
+  }
+  .player-bar .position {
+    color: var(--ink-muted);
+    font-size: 13px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .player-bar .current-text {
+    font-family: "Iowan Old Style", "Palatino Linotype", "URW Palladio", P052, serif;
+    font-size: 19px;
+    line-height: 1.4;
+    text-align: left;
+  }
+  .status-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--gold); margin-right: 8px; opacity: 0; transition: opacity 0.15s; vertical-align: middle;
+  }
+  .status-dot.playing { opacity: 1; animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.55; } }
+
+  .controls { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .ctrl-btn {
+    border: 1px solid var(--panel-border); background: var(--panel); color: var(--ink);
+    border-radius: 50%; width: 40px; height: 40px; font-size: 15px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.1s ease, background 0.12s ease;
+  }
+  .ctrl-btn:hover { background: var(--row-hover); }
+  .ctrl-btn:active, .play-btn:active, .big-btn:active { transform: scale(0.92); }
+  .ctrl-btn:focus-visible, .row:focus-visible, .big-btn:focus-visible, button.chip:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  .play-btn {
+    width: 48px; height: 48px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
+    border: none; font-size: 17px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: transform 0.1s ease, filter 0.12s ease;
+  }
+  .play-btn:hover { filter: brightness(1.08); }
+
+  .speed-row {
+    display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-muted); flex-shrink: 0;
+  }
+  .speed-row button {
+    width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--panel-border);
+    background: var(--panel); cursor: pointer; font-size: 14px; color: var(--ink);
+  }
+  .speed-row button:hover { background: var(--row-hover); }
+  .speed-val { min-width: 50px; font-variant-numeric: tabular-nums; text-align: center; }
+
+  .hint-bar {
+    padding: 8px 28px 14px;
+    font-size: 12px;
+    color: var(--ink-muted);
+  }
+  kbd {
+    background: var(--panel); border: 1px solid var(--panel-border); border-bottom-width: 2px;
+    border-radius: 5px; padding: 1px 7px; font-size: 12px; font-family: inherit;
+  }
+
+  /* Main content */
+  main { padding: 28px; }
+
+  .empty-state { margin: 60px auto; text-align: center; max-width: 420px; padding: 40px; }
+  .empty-state p { color: var(--ink-muted); font-size: 14px; line-height: 1.7; }
+  .big-btn {
+    font-size: 15px; padding: 12px 26px; border-radius: 10px; border: none;
+    background: var(--accent); color: var(--accent-ink); cursor: pointer; font-weight: 600;
+  }
+  .big-btn:hover { filter: brightness(1.08); }
+  .big-btn.secondary { background: var(--panel); color: var(--ink); border: 1px solid var(--panel-border); }
+
+  .list-pane {
+    display: none;
+    width: 100%;
+    max-width: 760px;
+    margin: 0 auto;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(34,32,27,0.05), 0 10px 28px rgba(34,32,27,0.07);
+  }
+  .list-pane.active { display: block; }
+
+  .row {
+    padding: 12px 20px 12px 17px;
+    border-bottom: 1px solid var(--panel-border);
+    border-left: 3px solid transparent;
+    cursor: pointer;
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .row:last-child { border-bottom: none; }
+  .row:hover { background: var(--row-hover); }
+  .row .num {
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-muted);
+    font-size: 11.5px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: rgba(31,110,98,0.08);
+  }
+  .row .txt { font-size: 14px; line-height: 1.5; text-align: left; flex: 1; min-width: 0; }
+  .row.current { background: #E7EFEC; border-left-color: var(--accent); }
+  .row.current .txt { font-weight: 600; }
+  .row.current .num { background: rgba(31,110,98,0.16); color: var(--accent); }
+
+  .copy-btn {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--panel-border);
+    border-radius: 7px;
+    background: #fff;
+    color: var(--ink-muted);
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  }
+  .copy-btn:hover { background: rgba(31,110,98,0.08); color: var(--accent); border-color: var(--accent); }
+  .copy-btn svg { width: 15px; height: 15px; pointer-events: none; }
+  .copy-btn.copied { color: #fff; background: var(--accent); border-color: var(--accent); }
+
+  input[type="file"] { display: none; }
+
+  /* Settings modal */
+  .overlay {
+    display: none; position: fixed; inset: 0; background: rgba(34,32,27,0.35);
+    align-items: center; justify-content: center; z-index: 10;
+  }
+  .overlay.active { display: flex; }
+  .modal {
+    background: var(--paper); border-radius: 14px; padding: 26px 28px; width: 380px;
+    max-width: 90vw; border: 1px solid var(--panel-border);
+  }
+  .modal h2 { font-size: 17px; margin: 0 0 4px; font-family: "Iowan Old Style", Palatino, serif; }
+  .modal p.desc { font-size: 13px; color: var(--ink-muted); margin: 0 0 18px; }
+  .bind-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 0; border-bottom: 1px solid var(--panel-border);
+  }
+  .bind-row:last-of-type { border-bottom: none; }
+  .bind-row .label { font-size: 14px; }
+  .bind-row .key-btn {
+    min-width: 74px; text-align: center; padding: 6px 10px; border-radius: 7px;
+    border: 1px solid var(--panel-border); background: var(--panel); font-size: 13px; cursor: pointer;
+  }
+  .bind-row .key-btn.listening { background: var(--gold); color: var(--accent-ink); }
+  .modal-close {
+    margin-top: 20px; width: 100%; padding: 10px; border-radius: 8px; border: none;
+    background: var(--accent); color: var(--accent-ink); font-size: 14px; cursor: pointer; font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<div class="top-sticky">
+  <header>
+    <h1 class="brand">
+      <svg class="brand-mark" width="20" height="16" viewBox="0 0 20 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="0" y="6" width="3" height="4" rx="1.5" fill="currentColor"/>
+        <rect x="5" y="2" width="3" height="12" rx="1.5" fill="currentColor"/>
+        <rect x="10" y="4" width="3" height="8" rx="1.5" fill="currentColor"/>
+        <rect x="15" y="0" width="3" height="16" rx="1.5" fill="currentColor"/>
+      </svg>
+      <span class="brand-main">Shadowing</span><span class="brand-sub">Player</span>
+    </h1>
+    <div class="header-actions">
+      <div class="load-bar" id="loadBar" style="display:none;">
+        <span id="folderLabel"></span>
+        <button class="chip" id="reloadBtn">別の音声を読み込む</button>
+      </div>
+      <label class="chip" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+        再生モード
+        <select id="modeSelect" style="border:none; background:transparent; font-size:13px; color:var(--ink); cursor:pointer;">
+          <option value="stop">1文ずつ止める</option>
+          <option value="continuous">連続再生</option>
+        </select>
+      </label>
+      <button class="chip" id="settingsBtn">キー割り当て</button>
+    </div>
+  </header>
+
+  <div class="player-bar" id="playerBar" style="display:none;">
+    <div class="now">
+      <span class="position" id="positionLabel">- / -</span>
+      <span class="current-text"><span class="status-dot" id="statusDot"></span><span id="currentText">ファイルを選んでください</span></span>
+    </div>
+    <div class="controls">
+      <button class="ctrl-btn" id="prevBtn" title="前へ">◀</button>
+      <button class="play-btn" id="playBtn" title="もう一度再生">▶</button>
+      <button class="ctrl-btn" id="pauseBtn" title="一時停止 / 再開">⏸</button>
+      <button class="ctrl-btn" id="nextBtn" title="次へ">▶</button>
+    </div>
+    <div class="speed-row">
+      速度
+      <button id="speedDown">−</button>
+      <span class="speed-val" id="speedVal">1.00x</span>
+      <button id="speedUp">+</button>
+    </div>
+  </div>
+  <div class="hint-bar" id="shortcutsBar"></div>
+</div>
+
+<main>
+  <div class="empty-state" id="emptyState">
+    <p>音声ファイル（0001.mp3, 0002.mp3 ...）が入ったフォルダを選んでください。<br>sentences.txt があれば、文章も一緒に表示されます。</p>
+    <button class="big-btn" id="pickFolderBtn">フォルダを選ぶ</button>
+    <p style="margin-top:14px;">
+      <button class="big-btn secondary" id="pickFilesBtn">またはファイルを選ぶ</button>
+    </p>
+  </div>
+
+  <div class="list-pane" id="listPane"></div>
+</main>
+
+<audio id="audioEl"></audio>
+<input type="file" id="folderInput" webkitdirectory directory multiple>
+<input type="file" id="filesInput" multiple accept="audio/*">
+
+<div class="overlay" id="settingsOverlay">
+  <div class="modal">
+    <h2>キー割り当て</h2>
+    <p class="desc">変更したい操作の右のボタンを押し、割り当てたいキーを押してください。</p>
+    <div id="bindRows"></div>
+    <button class="modal-close" id="closeSettings">閉じる</button>
+  </div>
+</div>
+
+<script>
+  const AUDIO_EXT = ['.mp3', '.wav', '.m4a', '.ogg', '.opus'];
+  const STORAGE_KEY = 'shadowPlayerSettings_v2';
+
+  const ACTIONS = [
+    { id: 'replay', label: '同じファイルを再生' },
+    { id: 'pause',  label: '一時停止 / 再開' },
+    { id: 'next',   label: '次のファイルを再生' },
+    { id: 'prev',   label: '前のファイルを再生' },
+  ];
+  const DEFAULT_BINDINGS = { replay: 'Enter', pause: 'Space', next: 'ArrowRight', prev: 'ArrowLeft' };
+
+  function loadSettings() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return { bindings: { ...DEFAULT_BINDINGS }, speed: 1.0, mode: 'stop' };
+  }
+  function saveSettings() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch (e) {}
+  }
+
+  let settings = loadSettings();
+  let items = [];
+  let currentIndex = -1;
+  let listeningFor = null;
+
+  const audioEl = document.getElementById('audioEl');
+  const emptyState = document.getElementById('emptyState');
+  const listPane = document.getElementById('listPane');
+  const playerBar = document.getElementById('playerBar');
+  const positionLabel = document.getElementById('positionLabel');
+  const currentText = document.getElementById('currentText');
+  const statusDot = document.getElementById('statusDot');
+  const loadBar = document.getElementById('loadBar');
+  const folderLabel = document.getElementById('folderLabel');
+  const speedVal = document.getElementById('speedVal');
+
+  audioEl.playbackRate = settings.speed || 1.0;
+  speedVal.textContent = audioEl.playbackRate.toFixed(2) + 'x';
+
+  const modeSelect = document.getElementById('modeSelect');
+  modeSelect.value = settings.mode || 'stop';
+  modeSelect.addEventListener('change', () => {
+    settings.mode = modeSelect.value;
+    saveSettings();
+  });
+
+  document.getElementById('pickFolderBtn').addEventListener('click', () => document.getElementById('folderInput').click());
+  document.getElementById('pickFilesBtn').addEventListener('click', () => document.getElementById('filesInput').click());
+  document.getElementById('reloadBtn').addEventListener('click', () => document.getElementById('folderInput').click());
+  document.getElementById('folderInput').addEventListener('change', (e) => handleFiles(e.target.files));
+  document.getElementById('filesInput').addEventListener('change', (e) => handleFiles(e.target.files));
+
+  function handleFiles(fileList) {
+    const files = Array.from(fileList);
+    const audioFiles = files.filter(f => AUDIO_EXT.some(ext => f.name.toLowerCase().endsWith(ext)));
+    if (audioFiles.length === 0) { alert('音声ファイル（mp3など）が見つかりませんでした。'); return; }
+    audioFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    const sentencesFile = files.find(f => f.name.toLowerCase() === 'sentences.txt');
+
+    items = audioFiles.map(f => ({ name: f.name, file: f, url: URL.createObjectURL(f), text: '' }));
+
+    const buildList = () => {
+      renderList();
+      const folderName = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/')[0] : `${items.length}個のファイル`;
+      folderLabel.textContent = folderName;
+      loadBar.style.display = 'flex';
+      playerBar.style.display = 'flex';
+      emptyState.style.display = 'none';
+      listPane.classList.add('active');
+      selectIndex(0, { autoplay: false });
+    };
+
+    if (sentencesFile) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const map = {};
+        reader.result.split('\n').forEach(line => {
+          const idx = line.indexOf('\t');
+          if (idx > -1) map[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+        });
+        items.forEach(it => {
+          const key = it.name.replace(/\.[^.]+$/, '');
+          if (map[key]) it.text = map[key];
+        });
+        buildList();
+      };
+      reader.readAsText(sentencesFile, 'utf-8');
+    } else {
+      buildList();
+    }
+  }
+
+  function esc(s) {
+    return String(s || '').replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  }
+
+  function renderList() {
+    listPane.innerHTML = '';
+    items.forEach((it, i) => {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.tabIndex = 0;
+      row.dataset.index = i;
+      row.innerHTML =
+        `<span class="num">${i + 1}</span>` +
+        `<span class="txt">${esc(it.text || it.name)}</span>` +
+        `<button type="button" class="copy-btn" title="英文をコピー" aria-label="英文をコピー">` +
+          `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">` +
+            `<rect x="7" y="7" width="10" height="10" rx="2"/>` +
+            `<path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>` +
+          `</svg>` +
+        `</button>`;
+      row.addEventListener('click', () => selectIndex(i, { autoplay: true }));
+
+      const copyBtn = row.querySelector('.copy-btn');
+      copyBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // 行のクリック（再生）を発火させない
+        const textToCopy = it.text || it.name;
+        const showCopied = () => {
+          copyBtn.classList.add('copied');
+          setTimeout(() => copyBtn.classList.remove('copied'), 1000);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(textToCopy).then(showCopied).catch(() => {
+            fallbackCopy(textToCopy);
+            showCopied();
+          });
+        } else {
+          fallbackCopy(textToCopy);
+          showCopied();
+        }
+      });
+
+      listPane.appendChild(row);
+    });
+  }
+
+  function fallbackCopy(text) {
+    // navigator.clipboard が使えない環境（file:// で開いた場合など）向けの代替手段
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  function selectIndex(i, { autoplay }) {
+    if (i < 0 || i >= items.length) return;
+    currentIndex = i;
+    const it = items[i];
+    document.querySelectorAll('.row').forEach(r => r.classList.remove('current'));
+    const rowEl = listPane.querySelector(`.row[data-index="${i}"]`);
+    if (rowEl) { rowEl.classList.add('current'); rowEl.scrollIntoView({ block: 'nearest' }); }
+    positionLabel.textContent = `${i + 1} / ${items.length}`;
+    currentText.textContent = it.text || it.name;
+    audioEl.src = it.url;
+    audioEl.load();
+    audioEl.playbackRate = settings.speed || 1.0;
+    if (autoplay) {
+      audioEl.currentTime = 0;
+      const playIt = () => audioEl.play();
+      if (audioEl.readyState >= 1) playIt();
+      else audioEl.addEventListener('loadedmetadata', playIt, { once: true });
+    }
+  }
+
+  function actionReplay() {
+    if (currentIndex === -1) { selectIndex(0, { autoplay: true }); return; }
+    const it = items[currentIndex];
+    audioEl.src = it.url;
+    audioEl.load();
+    const playIt = () => { audioEl.currentTime = 0; audioEl.play(); };
+    if (audioEl.readyState >= 1) playIt();
+    else audioEl.addEventListener('loadedmetadata', playIt, { once: true });
+  }
+  function actionPause() {
+    if (currentIndex === -1) return;
+    if (audioEl.paused) audioEl.play(); else audioEl.pause();
+  }
+  function actionNext() { selectIndex(currentIndex + 1, { autoplay: true }); }
+  function actionPrev() { selectIndex(currentIndex - 1, { autoplay: true }); }
+
+  document.getElementById('playBtn').addEventListener('click', actionReplay);
+  document.getElementById('pauseBtn').addEventListener('click', actionPause);
+  document.getElementById('nextBtn').addEventListener('click', actionNext);
+  document.getElementById('prevBtn').addEventListener('click', actionPrev);
+
+  document.getElementById('speedUp').addEventListener('click', () => setSpeed((settings.speed || 1) + 0.05));
+  document.getElementById('speedDown').addEventListener('click', () => setSpeed((settings.speed || 1) - 0.05));
+  function setSpeed(v) {
+    v = Math.max(0.5, Math.min(2.0, Math.round(v * 100) / 100));
+    settings.speed = v;
+    audioEl.playbackRate = v;
+    speedVal.textContent = v.toFixed(2) + 'x';
+    saveSettings();
+  }
+
+  audioEl.addEventListener('play', () => statusDot.classList.add('playing'));
+  audioEl.addEventListener('pause', () => statusDot.classList.remove('playing'));
+  audioEl.addEventListener('ended', () => {
+    statusDot.classList.remove('playing');
+    if ((settings.mode || 'stop') === 'continuous') {
+      actionNext();
+    }
+  });
+
+  const ACTION_FN = { replay: actionReplay, pause: actionPause, next: actionNext, prev: actionPrev };
+
+  function codeToLabel(code) {
+    if (!code) return '(未設定)';
+    if (code === 'Space') return 'Space';
+    if (code.startsWith('Arrow')) return { ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓' }[code];
+    if (code.startsWith('Key')) return code.slice(3);
+    if (code.startsWith('Digit')) return code.slice(5);
+    return code;
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (listeningFor) {
+      e.preventDefault();
+      Object.keys(settings.bindings).forEach(a => {
+        if (settings.bindings[a] === e.code) settings.bindings[a] = '';
+      });
+      settings.bindings[listeningFor] = e.code;
+      saveSettings();
+      renderBindRows();
+      renderShortcutsBar();
+      listeningFor = null;
+      return;
+    }
+    if (e.target.tagName === 'INPUT') return;
+    const action = Object.keys(settings.bindings).find(a => settings.bindings[a] === e.code);
+    if (action && ACTION_FN[action]) {
+      e.preventDefault();
+      ACTION_FN[action]();
+    }
+  });
+
+  const settingsOverlay = document.getElementById('settingsOverlay');
+  const bindRows = document.getElementById('bindRows');
+  document.getElementById('settingsBtn').addEventListener('click', () => {
+    renderBindRows();
+    settingsOverlay.classList.add('active');
+  });
+  document.getElementById('closeSettings').addEventListener('click', () => {
+    listeningFor = null;
+    settingsOverlay.classList.remove('active');
+  });
+
+  function renderBindRows() {
+    bindRows.innerHTML = '';
+    ACTIONS.forEach(a => {
+      const row = document.createElement('div');
+      row.className = 'bind-row';
+      const code = settings.bindings[a.id];
+      row.innerHTML = `<span class="label">${a.label}</span>`;
+      const btn = document.createElement('button');
+      btn.className = 'key-btn';
+      btn.textContent = listeningFor === a.id ? 'キーを押す…' : codeToLabel(code);
+      if (listeningFor === a.id) btn.classList.add('listening');
+      btn.addEventListener('click', () => { listeningFor = a.id; renderBindRows(); });
+      row.appendChild(btn);
+      bindRows.appendChild(row);
+    });
+  }
+
+  function renderShortcutsBar() {
+    const bar = document.getElementById('shortcutsBar');
+    bar.innerHTML = ACTIONS.map(a =>
+      `<span style="margin-right:20px;"><kbd>${codeToLabel(settings.bindings[a.id])}</kbd> ${a.label}</span>`
+    ).join('') + `<span>クリックでその文へ移動</span>`;
+  }
+  renderShortcutsBar();
+</script>
+</body>
+</html>
