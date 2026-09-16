@@ -401,8 +401,12 @@
       reader.onload = () => {
         const map = {};
         reader.result.split('\n').forEach(line => {
-          const idx = line.indexOf('\t');
-          if (idx > -1) map[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+          line = line.replace(/\r$/, '');
+          if (!line.trim()) return;
+          const parts = line.split('\t');
+          if (parts.length < 2) return;
+          // 2列目だけを英文として使う。3列目以降（過去に作った日本語訳など）は無視する
+          map[parts[0].trim()] = parts[1].trim();
         });
         items.forEach(it => {
           const key = it.name.replace(/\.[^.]+$/, '');
