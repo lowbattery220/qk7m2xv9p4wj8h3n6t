@@ -67,22 +67,24 @@
   }
   button.chip:hover { background: var(--row-hover); }
 
-  /* Player bar (sticky, horizontal) */
+  /* 操作ボタン（画面下に固定） */
   .player-bar {
-    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    background: var(--paper);
+    /* 再生ボタンを画面の真ん中に置き、左に「何文目か」、右に速度を添える */
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
-    gap: 24px;
-    padding: 14px 28px;
+    column-gap: 28px;
+    padding: 12px 28px;
     border-top: 1px solid var(--panel-border);
-    flex-wrap: wrap;
+    box-shadow: 0 -4px 16px rgba(34,32,27,0.06);
   }
-  .player-bar .now {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-    flex: 1;
-    min-width: 220px;
-  }
+  .player-bar .now { justify-self: end; }
   .player-bar .position {
     color: var(--ink-muted);
     font-size: 13px;
@@ -117,7 +119,8 @@
   .play-btn:hover { filter: brightness(1.08); }
 
   .speed-row {
-    display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-muted); flex-shrink: 0;
+    display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-muted);
+    justify-self: start;
   }
   .speed-row button {
     width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--panel-border);
@@ -125,16 +128,6 @@
   }
   .speed-row button:hover { background: var(--row-hover); }
   .speed-val { min-width: 50px; font-variant-numeric: tabular-nums; text-align: center; }
-
-  .hint-bar {
-    padding: 8px 28px 14px;
-    font-size: 12px;
-    color: var(--ink-muted);
-  }
-  kbd {
-    background: var(--panel); border: 1px solid var(--panel-border); border-bottom-width: 2px;
-    border-radius: 5px; padding: 1px 7px; font-size: 12px; font-family: inherit;
-  }
 
   /* Main content */
   main { padding: 28px; }
@@ -202,29 +195,25 @@
   .row.current .txt-en { font-weight: 600; }
   .row.current .num { background: rgba(31,110,98,0.16); color: var(--accent); }
 
-  /* 画面が狭いときは横並びをやめて上下に戻す */
-  .sp-only { display: none; }
-
-  /* スマホ幅：上部をコンパクトにして、文の一覧を広く見せる */
+  /* スマホ幅：英文と訳を上下に並べ、上下のバーをコンパクトにする */
   @media (max-width: 720px) {
     .row .txt { display: block; }
     .row .txt-ja {
       display: block; border-left: none; padding-left: 0; margin-top: 4px;
     }
 
-    .pc-only, #folderLabel, .hint-bar { display: none; }
-    .sp-only { display: inline; }
+    .pc-only, #folderLabel { display: none; }
 
     header { padding: 8px 14px; gap: 6px; }
     h1.brand { font-size: 17px; }
     .header-actions { gap: 6px; }
     button.chip { font-size: 12px; padding: 5px 10px; }
-    #modeSelect { font-size: 12px !important; }
 
-    .player-bar { padding: 6px 14px 8px; gap: 6px 12px; }
-    .controls { order: 1; width: 100%; justify-content: center; gap: 8px; }
-    .player-bar .now { order: 2; flex: 0 0 auto; min-width: 0; }
-    .speed-row { order: 3; margin-left: auto; }
+    /* 上の段に「何文目か」と速度、親指で押しやすい下の段に再生ボタン */
+    .player-bar { grid-template-columns: 1fr 1fr; row-gap: 6px; padding: 6px 14px 10px; }
+    .player-bar .now { grid-column: 1; grid-row: 1; justify-self: start; }
+    .speed-row { grid-column: 2; grid-row: 1; justify-self: end; }
+    .controls { grid-column: 1 / -1; grid-row: 2; justify-self: center; gap: 8px; }
     .ctrl-btn { width: 36px; height: 36px; font-size: 13px; }
     .play-btn { width: 42px; height: 42px; font-size: 15px; }
 
@@ -264,25 +253,37 @@
   }
   .overlay.active { display: flex; }
   .modal {
-    background: var(--paper); border-radius: 14px; padding: 26px 28px; width: 380px;
-    max-width: 90vw; border: 1px solid var(--panel-border);
+    background: var(--paper); border-radius: 14px; padding: 24px 26px; width: 400px;
+    max-width: 92vw; max-height: 88vh; overflow-y: auto; border: 1px solid var(--panel-border);
   }
-  .modal h2 { font-size: 17px; margin: 0 0 4px; font-family: "Iowan Old Style", Palatino, serif; }
-  .modal p.desc { font-size: 13px; color: var(--ink-muted); margin: 0 0 18px; }
+  .modal h2 { font-size: 18px; margin: 0; font-family: "Iowan Old Style", Palatino, serif; }
+  .modal .section-title {
+    font-size: 12px; font-weight: 600; color: var(--ink-muted); letter-spacing: 0.04em;
+    margin: 20px 0 6px;
+  }
+  .modal p.desc { font-size: 12px; color: var(--ink-muted); margin: -2px 0 8px; line-height: 1.5; }
+  .modal p.note { font-size: 12px; color: var(--ink-muted); margin: 8px 0 0; }
+  .setting-group {
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; padding: 0 14px;
+  }
   .bind-row {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 0; border-bottom: 1px solid var(--panel-border);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 9px 0; border-bottom: 1px solid var(--panel-border);
   }
-  .bind-row:last-of-type { border-bottom: none; }
+  .bind-row:last-child { border-bottom: none; }
+  .setting-select {
+    padding: 6px 8px; border-radius: 7px; border: 1px solid var(--panel-border);
+    background: var(--paper); font-size: 13px; color: var(--ink); cursor: pointer;
+  }
   .bind-row .label { font-size: 14px; }
   .bind-row .key-btn {
     min-width: 74px; text-align: center; padding: 6px 10px; border-radius: 7px;
-    border: 1px solid var(--panel-border); background: var(--panel); font-size: 13px; cursor: pointer;
+    border: 1px solid var(--panel-border); background: var(--paper); font-size: 13px; color: var(--ink); cursor: pointer;
   }
   .bind-row .key-btn.listening { background: var(--gold); color: var(--accent-ink); }
   .sec-input {
     width: 64px; text-align: center; padding: 6px 8px; border-radius: 7px;
-    border: 1px solid var(--panel-border); background: var(--panel); font-size: 13px; color: var(--ink);
+    border: 1px solid var(--panel-border); background: var(--paper); font-size: 13px; color: var(--ink);
   }
   .modal-close {
     margin-top: 20px; width: 100%; padding: 10px; border-radius: 8px; border: none;
@@ -308,37 +309,9 @@
         <span id="folderLabel"></span>
         <button class="chip" id="reloadBtn"><span class="pc-only">別の音声を</span>読み込む</button>
       </div>
-      <label class="chip" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-        <span class="pc-only">再生モード</span>
-        <select id="modeSelect" style="border:none; background:transparent; font-size:13px; color:var(--ink); cursor:pointer;">
-          <option value="stop">1文ずつ止める</option>
-          <option value="continuous">連続再生</option>
-        </select>
-      </label>
-      <button class="chip" id="toggleJaBtn">訳を隠す</button>
-      <button class="chip" id="settingsBtn"><span class="pc-only">キー割り当て</span><span class="sp-only">設定</span></button>
+      <button class="chip" id="settingsBtn">設定</button>
     </div>
   </header>
-
-  <div class="player-bar" id="playerBar" style="display:none;">
-    <div class="now">
-      <span class="position"><span class="status-dot" id="statusDot"></span><span id="positionLabel">- / -</span></span>
-    </div>
-    <div class="controls">
-      <button class="ctrl-btn" id="prevBtn" title="前へ">◀</button>
-      <button class="ctrl-btn rewind-btn" id="rewindBtn" title="巻き戻し">↺2</button>
-      <button class="play-btn" id="playBtn" title="もう一度再生">▶</button>
-      <button class="ctrl-btn" id="pauseBtn" title="一時停止 / 再開">⏸&#xFE0E;</button>
-      <button class="ctrl-btn" id="nextBtn" title="次へ">▶</button>
-    </div>
-    <div class="speed-row">
-      速度
-      <button id="speedDown">−</button>
-      <span class="speed-val" id="speedVal">1.00x</span>
-      <button id="speedUp">+</button>
-    </div>
-  </div>
-  <div class="hint-bar" id="shortcutsBar"></div>
 </div>
 
 <main>
@@ -353,19 +326,62 @@
   <div class="list-pane" id="listPane"></div>
 </main>
 
+<div class="player-bar" id="playerBar" style="display:none;">
+  <div class="now">
+    <span class="position"><span class="status-dot" id="statusDot"></span><span id="positionLabel">- / -</span></span>
+  </div>
+  <div class="controls">
+    <button class="ctrl-btn" id="prevBtn" title="前へ">◀</button>
+    <button class="ctrl-btn rewind-btn" id="rewindBtn" title="巻き戻し">↺2</button>
+    <button class="play-btn" id="playBtn" title="もう一度再生">▶</button>
+    <button class="ctrl-btn" id="pauseBtn" title="一時停止 / 再開">⏸&#xFE0E;</button>
+    <button class="ctrl-btn" id="nextBtn" title="次へ">▶</button>
+  </div>
+  <div class="speed-row">
+    速度
+    <button id="speedDown">−</button>
+    <span class="speed-val" id="speedVal">1.00x</span>
+    <button id="speedUp">+</button>
+  </div>
+</div>
+
 <audio id="audioEl"></audio>
 <input type="file" id="folderInput" webkitdirectory directory multiple>
 <input type="file" id="filesInput" multiple accept="audio/*">
 
 <div class="overlay" id="settingsOverlay">
-  <div class="modal">
-    <h2>キー割り当て</h2>
-    <p class="desc">変更したい操作の右のボタンを押し、割り当てたいキーを押してください。</p>
-    <div id="bindRows"></div>
-    <div class="bind-row">
-      <span class="label">巻き戻す秒数</span>
-      <span><input type="number" id="rewindSecInput" min="1" max="30" step="1" class="sec-input"> 秒</span>
+  <div class="modal" role="dialog" aria-labelledby="settingsTitle">
+    <h2 id="settingsTitle">設定</h2>
+
+    <h3 class="section-title">表示・再生</h3>
+    <div class="setting-group">
+      <div class="bind-row">
+        <span class="label">日本語訳</span>
+        <select id="jaSelect" class="setting-select">
+          <option value="show">表示する</option>
+          <option value="hide">隠す</option>
+        </select>
+      </div>
+      <div class="bind-row">
+        <span class="label">再生モード</span>
+        <select id="modeSelect" class="setting-select">
+          <option value="stop">1文ずつ止める</option>
+          <option value="continuous">連続再生</option>
+        </select>
+      </div>
+      <div class="bind-row">
+        <span class="label">巻き戻す秒数</span>
+        <span class="label"><input type="number" id="rewindSecInput" min="1" max="30" step="1" class="sec-input"> 秒</span>
+      </div>
     </div>
+
+    <div class="pc-only">
+      <h3 class="section-title">キー操作</h3>
+      <p class="desc">変えたいときは、右のボタンを押してから新しいキーを押してください。</p>
+      <div class="setting-group" id="bindRows"></div>
+      <p class="note">文をクリックすると、その文を再生します。</p>
+    </div>
+
     <button class="modal-close" id="closeSettings">閉じる</button>
   </div>
 </div>
@@ -428,10 +444,10 @@
     saveSettings();
   });
 
-  const toggleJaBtn = document.getElementById('toggleJaBtn');
+  const jaSelect = document.getElementById('jaSelect');
   function applyJaVisibility() {
     document.body.classList.toggle('hide-ja', !settings.showJa);
-    toggleJaBtn.textContent = settings.showJa ? '訳を隠す' : '訳を見る';
+    jaSelect.value = settings.showJa ? 'show' : 'hide';
   }
   function actionToggleJa() {
     settings.showJa = !settings.showJa;
@@ -439,7 +455,11 @@
     applyJaVisibility();
   }
   applyJaVisibility();
-  toggleJaBtn.addEventListener('click', actionToggleJa);
+  jaSelect.addEventListener('change', () => {
+    settings.showJa = jaSelect.value === 'show';
+    saveSettings();
+    applyJaVisibility();
+  });
 
   document.getElementById('pickFolderBtn').addEventListener('click', () => document.getElementById('folderInput').click());
   document.getElementById('pickFilesBtn').addEventListener('click', () => document.getElementById('filesInput').click());
@@ -461,9 +481,10 @@
       const folderName = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/')[0] : `${items.length}個のファイル`;
       folderLabel.textContent = folderName;
       loadBar.style.display = 'flex';
-      playerBar.style.display = 'flex';
+      playerBar.style.display = 'grid';
       emptyState.style.display = 'none';
       listPane.classList.add('active');
+      updateLayoutOffsets();
       selectIndex(0, { autoplay: false });
     };
 
@@ -492,6 +513,24 @@
     } else {
       buildList();
     }
+  }
+
+  // 上のバーと下の操作ボタンの高さぶん余白を取り、文がその裏に隠れないようにする
+  const topSticky = document.querySelector('.top-sticky');
+  const mainEl = document.querySelector('main');
+  function updateLayoutOffsets() {
+    const barH = playerBar.style.display === 'none' ? 0 : playerBar.offsetHeight;
+    mainEl.style.paddingBottom = `${barH + 24}px`;
+  }
+  window.addEventListener('resize', updateLayoutOffsets);
+
+  function scrollRowIntoView(rowEl) {
+    const margin = 8;
+    const r = rowEl.getBoundingClientRect();
+    const visibleTop = topSticky.getBoundingClientRect().bottom + margin;
+    const visibleBottom = playerBar.getBoundingClientRect().top - margin;
+    if (r.top < visibleTop) window.scrollBy(0, r.top - visibleTop);
+    else if (r.bottom > visibleBottom) window.scrollBy(0, r.bottom - visibleBottom);
   }
 
   function esc(s) {
@@ -564,7 +603,7 @@
     const it = items[i];
     document.querySelectorAll('.row').forEach(r => r.classList.remove('current'));
     const rowEl = listPane.querySelector(`.row[data-index="${i}"]`);
-    if (rowEl) { rowEl.classList.add('current'); rowEl.scrollIntoView({ block: 'nearest' }); }
+    if (rowEl) { rowEl.classList.add('current'); scrollRowIntoView(rowEl); }
     positionLabel.textContent = `${i + 1} / ${items.length}`;
     audioEl.src = it.url;
     audioEl.load();
@@ -612,7 +651,6 @@
     saveSettings();
     applyRewindSec();
     renderBindRows();
-    renderShortcutsBar();
   });
   applyRewindSec();
   rewindBtn.addEventListener('click', actionRewind);
@@ -669,13 +707,13 @@
         if (settings.bindings[a] === e.code) settings.bindings[a] = '';
       });
       settings.bindings[listeningFor] = e.code;
+      listeningFor = null;
       saveSettings();
       renderBindRows();
-      renderShortcutsBar();
-      listeningFor = null;
       return;
     }
-    if (e.target.tagName === 'INPUT') return;
+    // 設定画面の入力欄・選択欄を操作しているときは、ショートカットを働かせない
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
     const action = Object.keys(settings.bindings).find(a => settings.bindings[a] === e.code);
     if (action && ACTION_FN[action]) {
       e.preventDefault();
@@ -689,9 +727,13 @@
     renderBindRows();
     settingsOverlay.classList.add('active');
   });
-  document.getElementById('closeSettings').addEventListener('click', () => {
+  function closeSettings() {
     listeningFor = null;
     settingsOverlay.classList.remove('active');
+  }
+  document.getElementById('closeSettings').addEventListener('click', closeSettings);
+  settingsOverlay.addEventListener('click', (e) => {
+    if (e.target === settingsOverlay) closeSettings();
   });
 
   function renderBindRows() {
@@ -710,14 +752,6 @@
       bindRows.appendChild(row);
     });
   }
-
-  function renderShortcutsBar() {
-    const bar = document.getElementById('shortcutsBar');
-    bar.innerHTML = ACTIONS.map(a =>
-      `<span style="margin-right:20px;"><kbd>${codeToLabel(settings.bindings[a.id])}</kbd> ${actionLabel(a)}</span>`
-    ).join('') + `<span>クリックでその文へ移動</span>`;
-  }
-  renderShortcutsBar();
 </script>
 </body>
 </html>
