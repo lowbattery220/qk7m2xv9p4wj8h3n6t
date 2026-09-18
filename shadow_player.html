@@ -89,12 +89,6 @@
     white-space: nowrap;
     flex-shrink: 0;
   }
-  .player-bar .current-text {
-    font-family: "Iowan Old Style", "Palatino Linotype", "URW Palladio", P052, serif;
-    font-size: 19px;
-    line-height: 1.4;
-    text-align: left;
-  }
   .status-dot {
     display: inline-block; width: 8px; height: 8px; border-radius: 50%;
     background: var(--gold); margin-right: 8px; opacity: 0; transition: opacity 0.15s; vertical-align: middle;
@@ -103,6 +97,7 @@
   @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.55; } }
 
   .controls { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .rewind-btn { font-size: 13px; font-variant-numeric: tabular-nums; }
   .ctrl-btn {
     border: 1px solid var(--panel-border); background: var(--panel); color: var(--ink);
     border-radius: 50%; width: 40px; height: 40px; font-size: 15px; cursor: pointer;
@@ -156,7 +151,7 @@
   .list-pane {
     display: none;
     width: 100%;
-    max-width: 760px;
+    max-width: 1080px;
     margin: 0 auto;
     background: var(--panel);
     border: 1px solid var(--panel-border);
@@ -165,6 +160,7 @@
     box-shadow: 0 1px 3px rgba(34,32,27,0.05), 0 10px 28px rgba(34,32,27,0.07);
   }
   .list-pane.active { display: block; }
+  body.hide-ja .list-pane { max-width: 760px; }
 
   .row {
     padding: 12px 20px 12px 17px;
@@ -191,10 +187,30 @@
     border-radius: 6px;
     background: rgba(31,110,98,0.08);
   }
-  .row .txt { font-size: 14px; line-height: 1.5; text-align: left; flex: 1; min-width: 0; }
+  .row .txt {
+    font-size: 14px; line-height: 1.5; text-align: left; flex: 1; min-width: 0;
+    display: flex; gap: 20px; align-items: flex-start;
+  }
+  .row .en-group { flex: 1.15; min-width: 0; display: flex; gap: 10px; align-items: flex-start; }
+  .row .txt-en { flex: 1; min-width: 0; }
+  .row .txt-ja {
+    flex: 1; min-width: 0;
+    font-size: 12.5px; line-height: 1.6; color: var(--ink-muted);
+    border-left: 1px solid var(--panel-border); padding-left: 20px;
+  }
   .row.current { background: #E7EFEC; border-left-color: var(--accent); }
-  .row.current .txt { font-weight: 600; }
+  .row.current .txt-en { font-weight: 600; }
   .row.current .num { background: rgba(31,110,98,0.16); color: var(--accent); }
+
+  /* 画面が狭いときは横並びをやめて上下に戻す */
+  @media (max-width: 720px) {
+    .row .txt { display: block; }
+    .row .txt-ja {
+      display: block; border-left: none; padding-left: 0; margin-top: 4px;
+    }
+  }
+
+  body.hide-ja .txt-ja { display: none; }
 
   .copy-btn {
     flex-shrink: 0;
@@ -203,17 +219,19 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid var(--panel-border);
+    border: none;
     border-radius: 7px;
-    background: #fff;
+    background: transparent;
     color: var(--ink-muted);
+    opacity: 0.4;
     cursor: pointer;
     padding: 0;
-    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+    transition: background 0.12s ease, color 0.12s ease, opacity 0.12s ease;
   }
-  .copy-btn:hover { background: rgba(31,110,98,0.08); color: var(--accent); border-color: var(--accent); }
+  .row:hover .copy-btn, .row.current .copy-btn { opacity: 0.7; }
+  .copy-btn:hover { opacity: 1; background: rgba(31,110,98,0.1); color: var(--accent); }
   .copy-btn svg { width: 15px; height: 15px; pointer-events: none; }
-  .copy-btn.copied { color: #fff; background: var(--accent); border-color: var(--accent); }
+  .copy-btn.copied { opacity: 1; color: #fff; background: var(--accent); }
 
   input[type="file"] { display: none; }
 
@@ -240,6 +258,10 @@
     border: 1px solid var(--panel-border); background: var(--panel); font-size: 13px; cursor: pointer;
   }
   .bind-row .key-btn.listening { background: var(--gold); color: var(--accent-ink); }
+  .sec-input {
+    width: 64px; text-align: center; padding: 6px 8px; border-radius: 7px;
+    border: 1px solid var(--panel-border); background: var(--panel); font-size: 13px; color: var(--ink);
+  }
   .modal-close {
     margin-top: 20px; width: 100%; padding: 10px; border-radius: 8px; border: none;
     background: var(--accent); color: var(--accent-ink); font-size: 14px; cursor: pointer; font-weight: 600;
@@ -271,17 +293,18 @@
           <option value="continuous">連続再生</option>
         </select>
       </label>
+      <button class="chip" id="toggleJaBtn">訳を隠す</button>
       <button class="chip" id="settingsBtn">キー割り当て</button>
     </div>
   </header>
 
   <div class="player-bar" id="playerBar" style="display:none;">
     <div class="now">
-      <span class="position" id="positionLabel">- / -</span>
-      <span class="current-text"><span class="status-dot" id="statusDot"></span><span id="currentText">ファイルを選んでください</span></span>
+      <span class="position"><span class="status-dot" id="statusDot"></span><span id="positionLabel">- / -</span></span>
     </div>
     <div class="controls">
       <button class="ctrl-btn" id="prevBtn" title="前へ">◀</button>
+      <button class="ctrl-btn rewind-btn" id="rewindBtn" title="巻き戻し">↺2</button>
       <button class="play-btn" id="playBtn" title="もう一度再生">▶</button>
       <button class="ctrl-btn" id="pauseBtn" title="一時停止 / 再開">⏸</button>
       <button class="ctrl-btn" id="nextBtn" title="次へ">▶</button>
@@ -298,7 +321,7 @@
 
 <main>
   <div class="empty-state" id="emptyState">
-    <p>音声ファイル（0001.mp3, 0002.mp3 ...）が入ったフォルダを選んでください。<br>sentences.txt があれば、文章も一緒に表示されます。</p>
+    <p>音声ファイル（0001.mp3, 0002.mp3 ...）が入ったフォルダを選んでください。<br>sentences.txt があれば、英文と日本語訳も一緒に表示されます。</p>
     <button class="big-btn" id="pickFolderBtn">フォルダを選ぶ</button>
     <p style="margin-top:14px;">
       <button class="big-btn secondary" id="pickFilesBtn">またはファイルを選ぶ</button>
@@ -317,6 +340,10 @@
     <h2>キー割り当て</h2>
     <p class="desc">変更したい操作の右のボタンを押し、割り当てたいキーを押してください。</p>
     <div id="bindRows"></div>
+    <div class="bind-row">
+      <span class="label">巻き戻す秒数</span>
+      <span><input type="number" id="rewindSecInput" min="1" max="30" step="1" class="sec-input"> 秒</span>
+    </div>
     <button class="modal-close" id="closeSettings">閉じる</button>
   </div>
 </div>
@@ -326,19 +353,29 @@
   const STORAGE_KEY = 'shadowPlayerSettings_v2';
 
   const ACTIONS = [
-    { id: 'replay', label: '同じファイルを再生' },
-    { id: 'pause',  label: '一時停止 / 再開' },
-    { id: 'next',   label: '次のファイルを再生' },
-    { id: 'prev',   label: '前のファイルを再生' },
+    { id: 'replay',   label: '同じファイルを再生' },
+    { id: 'pause',    label: '一時停止 / 再開' },
+    { id: 'rewind',   label: '巻き戻し' },
+    { id: 'next',     label: '次のファイルを再生' },
+    { id: 'prev',     label: '前のファイルを再生' },
+    { id: 'toggleJa', label: '日本語訳の表示切替' },
   ];
-  const DEFAULT_BINDINGS = { replay: 'Enter', pause: 'Space', next: 'ArrowRight', prev: 'ArrowLeft' };
+  // 'Comma' は「, <」のキー（Shiftの有無は問わない）
+  const DEFAULT_BINDINGS = { replay: 'Enter', pause: 'Space', rewind: 'Comma', next: 'ArrowRight', prev: 'ArrowLeft', toggleJa: 'KeyJ' };
+  const DEFAULT_REWIND_SEC = 2;
 
   function loadSettings() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        parsed.bindings = { ...DEFAULT_BINDINGS, ...(parsed.bindings || {}) };
+        if (parsed.showJa === undefined) parsed.showJa = true;
+        if (!parsed.rewindSec) parsed.rewindSec = DEFAULT_REWIND_SEC;
+        return parsed;
+      }
     } catch (e) {}
-    return { bindings: { ...DEFAULT_BINDINGS }, speed: 1.0, mode: 'stop' };
+    return { bindings: { ...DEFAULT_BINDINGS }, speed: 1.0, mode: 'stop', showJa: true, rewindSec: DEFAULT_REWIND_SEC };
   }
   function saveSettings() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch (e) {}
@@ -354,7 +391,6 @@
   const listPane = document.getElementById('listPane');
   const playerBar = document.getElementById('playerBar');
   const positionLabel = document.getElementById('positionLabel');
-  const currentText = document.getElementById('currentText');
   const statusDot = document.getElementById('statusDot');
   const loadBar = document.getElementById('loadBar');
   const folderLabel = document.getElementById('folderLabel');
@@ -370,6 +406,19 @@
     saveSettings();
   });
 
+  const toggleJaBtn = document.getElementById('toggleJaBtn');
+  function applyJaVisibility() {
+    document.body.classList.toggle('hide-ja', !settings.showJa);
+    toggleJaBtn.textContent = settings.showJa ? '訳を隠す' : '訳を見る';
+  }
+  function actionToggleJa() {
+    settings.showJa = !settings.showJa;
+    saveSettings();
+    applyJaVisibility();
+  }
+  applyJaVisibility();
+  toggleJaBtn.addEventListener('click', actionToggleJa);
+
   document.getElementById('pickFolderBtn').addEventListener('click', () => document.getElementById('folderInput').click());
   document.getElementById('pickFilesBtn').addEventListener('click', () => document.getElementById('filesInput').click());
   document.getElementById('reloadBtn').addEventListener('click', () => document.getElementById('folderInput').click());
@@ -383,7 +432,7 @@
     audioFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     const sentencesFile = files.find(f => f.name.toLowerCase() === 'sentences.txt');
 
-    items = audioFiles.map(f => ({ name: f.name, file: f, url: URL.createObjectURL(f), text: '' }));
+    items = audioFiles.map(f => ({ name: f.name, file: f, url: URL.createObjectURL(f), text: '', ja: '' }));
 
     const buildList = () => {
       renderList();
@@ -405,12 +454,15 @@
           if (!line.trim()) return;
           const parts = line.split('\t');
           if (parts.length < 2) return;
-          // 2列目だけを英文として使う。3列目以降（過去に作った日本語訳など）は無視する
-          map[parts[0].trim()] = parts[1].trim();
+          // 1列目=ファイル番号、2列目=英文、3列目以降=日本語訳
+          map[parts[0].trim()] = {
+            en: parts[1].trim(),
+            ja: parts.length > 2 ? parts.slice(2).join('\t').trim() : '',
+          };
         });
         items.forEach(it => {
           const key = it.name.replace(/\.[^.]+$/, '');
-          if (map[key]) it.text = map[key];
+          if (map[key]) { it.text = map[key].en; it.ja = map[key].ja; }
         });
         buildList();
       };
@@ -432,15 +484,21 @@
       row.className = 'row';
       row.tabIndex = 0;
       row.dataset.index = i;
+      const jaHtml = it.ja ? `<span class="txt-ja">${esc(it.ja)}</span>` : '';
       row.innerHTML =
         `<span class="num">${i + 1}</span>` +
-        `<span class="txt">${esc(it.text || it.name)}</span>` +
-        `<button type="button" class="copy-btn" title="英文をコピー" aria-label="英文をコピー">` +
-          `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">` +
-            `<rect x="7" y="7" width="10" height="10" rx="2"/>` +
-            `<path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>` +
-          `</svg>` +
-        `</button>`;
+        `<span class="txt">` +
+          `<span class="en-group">` +
+            `<span class="txt-en">${esc(it.text || it.name)}</span>` +
+            `<button type="button" class="copy-btn" title="英文をコピー" aria-label="英文をコピー">` +
+              `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">` +
+                `<rect x="7" y="7" width="10" height="10" rx="2"/>` +
+                `<path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>` +
+              `</svg>` +
+            `</button>` +
+          `</span>` +
+          jaHtml +
+        `</span>`;
       row.addEventListener('click', () => selectIndex(i, { autoplay: true }));
 
       const copyBtn = row.querySelector('.copy-btn');
@@ -486,7 +544,6 @@
     const rowEl = listPane.querySelector(`.row[data-index="${i}"]`);
     if (rowEl) { rowEl.classList.add('current'); rowEl.scrollIntoView({ block: 'nearest' }); }
     positionLabel.textContent = `${i + 1} / ${items.length}`;
-    currentText.textContent = it.text || it.name;
     audioEl.src = it.url;
     audioEl.load();
     audioEl.playbackRate = settings.speed || 1.0;
@@ -511,8 +568,32 @@
     if (currentIndex === -1) return;
     if (audioEl.paused) audioEl.play(); else audioEl.pause();
   }
+  function actionRewind() {
+    if (currentIndex === -1) return;
+    audioEl.currentTime = Math.max(0, audioEl.currentTime - settings.rewindSec);
+    // 文の再生が終わった後でも、押せば最後の数秒をもう一度聞ける
+    if (audioEl.paused) audioEl.play();
+  }
   function actionNext() { selectIndex(currentIndex + 1, { autoplay: true }); }
   function actionPrev() { selectIndex(currentIndex - 1, { autoplay: true }); }
+
+  const rewindBtn = document.getElementById('rewindBtn');
+  const rewindSecInput = document.getElementById('rewindSecInput');
+  function applyRewindSec() {
+    rewindBtn.textContent = `↺${settings.rewindSec}`;
+    rewindBtn.title = `${settings.rewindSec}秒巻き戻し`;
+    rewindSecInput.value = settings.rewindSec;
+  }
+  rewindSecInput.addEventListener('change', () => {
+    const v = Math.round(Number(rewindSecInput.value));
+    if (v >= 1 && v <= 30) settings.rewindSec = v;
+    saveSettings();
+    applyRewindSec();
+    renderBindRows();
+    renderShortcutsBar();
+  });
+  applyRewindSec();
+  rewindBtn.addEventListener('click', actionRewind);
 
   document.getElementById('playBtn').addEventListener('click', actionReplay);
   document.getElementById('pauseBtn').addEventListener('click', actionPause);
@@ -538,11 +619,19 @@
     }
   });
 
-  const ACTION_FN = { replay: actionReplay, pause: actionPause, next: actionNext, prev: actionPrev };
+  const ACTION_FN = { replay: actionReplay, pause: actionPause, rewind: actionRewind, next: actionNext, prev: actionPrev, toggleJa: actionToggleJa };
+
+  function actionLabel(a) {
+    return a.id === 'rewind' ? `${settings.rewindSec}秒巻き戻し` : a.label;
+  }
+
+  const MODIFIER_CODES = ['ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight', 'CapsLock'];
 
   function codeToLabel(code) {
     if (!code) return '(未設定)';
     if (code === 'Space') return 'Space';
+    if (code === 'Comma') return '<';
+    if (code === 'Period') return '>';
     if (code.startsWith('Arrow')) return { ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓' }[code];
     if (code.startsWith('Key')) return code.slice(3);
     if (code.startsWith('Digit')) return code.slice(5);
@@ -552,6 +641,8 @@
   document.addEventListener('keydown', (e) => {
     if (listeningFor) {
       e.preventDefault();
+      // 「<」のようにShiftと一緒に押すキーを割り当てられるよう、Shift等の単独押しは無視する
+      if (MODIFIER_CODES.includes(e.code)) return;
       Object.keys(settings.bindings).forEach(a => {
         if (settings.bindings[a] === e.code) settings.bindings[a] = '';
       });
@@ -587,7 +678,7 @@
       const row = document.createElement('div');
       row.className = 'bind-row';
       const code = settings.bindings[a.id];
-      row.innerHTML = `<span class="label">${a.label}</span>`;
+      row.innerHTML = `<span class="label">${actionLabel(a)}</span>`;
       const btn = document.createElement('button');
       btn.className = 'key-btn';
       btn.textContent = listeningFor === a.id ? 'キーを押す…' : codeToLabel(code);
@@ -601,7 +692,7 @@
   function renderShortcutsBar() {
     const bar = document.getElementById('shortcutsBar');
     bar.innerHTML = ACTIONS.map(a =>
-      `<span style="margin-right:20px;"><kbd>${codeToLabel(settings.bindings[a.id])}</kbd> ${a.label}</span>`
+      `<span style="margin-right:20px;"><kbd>${codeToLabel(settings.bindings[a.id])}</kbd> ${actionLabel(a)}</span>`
     ).join('') + `<span>クリックでその文へ移動</span>`;
   }
   renderShortcutsBar();
