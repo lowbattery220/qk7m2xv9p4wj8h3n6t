@@ -203,11 +203,33 @@
   .row.current .num { background: rgba(31,110,98,0.16); color: var(--accent); }
 
   /* 画面が狭いときは横並びをやめて上下に戻す */
+  .sp-only { display: none; }
+
+  /* スマホ幅：上部をコンパクトにして、文の一覧を広く見せる */
   @media (max-width: 720px) {
     .row .txt { display: block; }
     .row .txt-ja {
       display: block; border-left: none; padding-left: 0; margin-top: 4px;
     }
+
+    .pc-only, #folderLabel, .hint-bar { display: none; }
+    .sp-only { display: inline; }
+
+    header { padding: 8px 14px; gap: 6px; }
+    h1.brand { font-size: 17px; }
+    .header-actions { gap: 6px; }
+    button.chip { font-size: 12px; padding: 5px 10px; }
+    #modeSelect { font-size: 12px !important; }
+
+    .player-bar { padding: 6px 14px 8px; gap: 6px 12px; }
+    .controls { order: 1; width: 100%; justify-content: center; gap: 8px; }
+    .player-bar .now { order: 2; flex: 0 0 auto; min-width: 0; }
+    .speed-row { order: 3; margin-left: auto; }
+    .ctrl-btn { width: 36px; height: 36px; font-size: 13px; }
+    .play-btn { width: 42px; height: 42px; font-size: 15px; }
+
+    main { padding: 10px; }
+    .row { padding: 10px 12px 10px 9px; gap: 10px; }
   }
 
   body.hide-ja .txt-ja { display: none; }
@@ -284,17 +306,17 @@
     <div class="header-actions">
       <div class="load-bar" id="loadBar" style="display:none;">
         <span id="folderLabel"></span>
-        <button class="chip" id="reloadBtn">別の音声を読み込む</button>
+        <button class="chip" id="reloadBtn"><span class="pc-only">別の音声を</span>読み込む</button>
       </div>
       <label class="chip" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-        再生モード
+        <span class="pc-only">再生モード</span>
         <select id="modeSelect" style="border:none; background:transparent; font-size:13px; color:var(--ink); cursor:pointer;">
           <option value="stop">1文ずつ止める</option>
           <option value="continuous">連続再生</option>
         </select>
       </label>
       <button class="chip" id="toggleJaBtn">訳を隠す</button>
-      <button class="chip" id="settingsBtn">キー割り当て</button>
+      <button class="chip" id="settingsBtn"><span class="pc-only">キー割り当て</span><span class="sp-only">設定</span></button>
     </div>
   </header>
 
@@ -306,7 +328,7 @@
       <button class="ctrl-btn" id="prevBtn" title="前へ">◀</button>
       <button class="ctrl-btn rewind-btn" id="rewindBtn" title="巻き戻し">↺2</button>
       <button class="play-btn" id="playBtn" title="もう一度再生">▶</button>
-      <button class="ctrl-btn" id="pauseBtn" title="一時停止 / 再開">⏸</button>
+      <button class="ctrl-btn" id="pauseBtn" title="一時停止 / 再開">⏸&#xFE0E;</button>
       <button class="ctrl-btn" id="nextBtn" title="次へ">▶</button>
     </div>
     <div class="speed-row">
