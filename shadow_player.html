@@ -223,6 +223,13 @@
 
   body.hide-ja .txt-ja { display: none; }
 
+  /* 1回分をまとめたmp3のときの、Part の見出し */
+  .part-head {
+    padding: 10px 20px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+    color: var(--accent); background: var(--paper); border-bottom: 1px solid var(--panel-border);
+  }
+  .part-head:not(:first-child) { border-top: 1px solid var(--panel-border); }
+
   .copy-btn {
     flex-shrink: 0;
     width: 28px;
@@ -316,10 +323,10 @@
 
 <main>
   <div class="empty-state" id="emptyState">
-    <p>教材のフォルダを選んでください。<br>1文ずつの音声（0001.mp3, 0002.mp3 ...）のフォルダでも、音声1本と「区切り時刻.txt」のフォルダでも使えます。<br>sentences.txt があれば、英文と日本語訳も一緒に表示されます。</p>
-    <button class="big-btn" id="pickFolderBtn">フォルダを選ぶ</button>
+    <p>教材を選んでください。<br>「〜_シャドーイング.mp3」なら、そのファイル1つを「ファイルを選ぶ」から選びます。<br>1文ずつの音声（0001.mp3 ...）のフォルダや、音声1本と「区切り時刻.txt」のフォルダも使えます。</p>
+    <button class="big-btn" id="pickFilesBtn">ファイルを選ぶ</button>
     <p style="margin-top:14px;">
-      <button class="big-btn secondary" id="pickFilesBtn">またはファイルを選ぶ</button>
+      <button class="big-btn secondary" id="pickFolderBtn">フォルダを選ぶ</button>
     </p>
   </div>
 
@@ -463,7 +470,7 @@
 
   document.getElementById('pickFolderBtn').addEventListener('click', () => document.getElementById('folderInput').click());
   document.getElementById('pickFilesBtn').addEventListener('click', () => document.getElementById('filesInput').click());
-  document.getElementById('reloadBtn').addEventListener('click', () => document.getElementById('folderInput').click());
+  document.getElementById('reloadBtn').addEventListener('click', () => document.getElementById('filesInput').click());
   document.getElementById('folderInput').addEventListener('change', (e) => handleFiles(e.target.files));
   document.getElementById('filesInput').addEventListener('change', (e) => handleFiles(e.target.files));
 
@@ -497,6 +504,34 @@
     return { source, rows };
   }
 
+  // 「〜_シャドーイング.mp3」：mp3のタグ（TXXX "shadowing"）に英文・訳・時刻が JSON で入っている
+  async function readBundle(file) {
+    try {
+      const h = new Uint8Array(await file.slice(0, 10).arrayBuffer());
+      if (h[0] !== 0x49 || h[1] !== 0x44 || h[2] !== 0x33) return null;   // "ID3"
+      const ver = h[3];
+      const ss = (b, i) => (b[i] << 21) | (b[i + 1] << 14) | (b[i + 2] << 7) | b[i + 3];
+      const size = ss(h, 6);
+      const tag = new Uint8Array(await file.slice(10, 10 + size).arrayBuffer());
+      const dec = new TextDecoder('utf-8');
+      let i = 0;
+      while (i + 10 <= tag.length && tag[i] !== 0) {
+        const id = String.fromCharCode(tag[i], tag[i + 1], tag[i + 2], tag[i + 3]);
+        const fs = ver === 4 ? ss(tag, i + 4) : ((tag[i + 4] << 24) | (tag[i + 5] << 16) | (tag[i + 6] << 8) | tag[i + 7]);
+        const body = tag.subarray(i + 10, i + 10 + fs);
+        if (id === 'TXXX' && body[0] === 3) {
+          const z = body.indexOf(0, 1);
+          if (dec.decode(body.subarray(1, z)) === 'shadowing') {
+            const data = JSON.parse(dec.decode(body.subarray(z + 1)).replace(/\0+$/, ''));
+            if (data && Array.isArray(data.parts)) return data;
+          }
+        }
+        i += 10 + fs;
+      }
+    } catch (e) {}
+    return null;
+  }
+
   async function handleFiles(fileList) {
     const files = Array.from(fileList);
     const nameOf = f => f.name.normalize('NFC');
@@ -508,7 +543,17 @@
 
     // 「音声1本＋区切り時刻.txt」なら、1本の音声の中を時刻で区切って再生する
     let timed = null;
-    if (timesFile) {
+    for (const f of audioFiles) {
+      const data = await readBundle(f);
+      if (data) {
+        const rows = [];
+        data.parts.forEach(p => p.rows.forEach((r, k) => rows.push({
+          name: String(k + 1), num: k + 1, part: p.title, start: r[0], end: r[1], text: r[2], ja: r[3] || '',
+        })));
+        if (rows.length) { timed = { file: f, rows, title: data.title, bundle: true }; break; }
+      }
+    }
+    if (!timed && timesFile) {
       const t = parseTimes(await readText(timesFile));
       const src = audioFiles.find(f => nameOf(f) === t.source)
         || (audioFiles.length === 1 && !/^\d+\.[^.]+$/.test(audioFiles[0].name) ? audioFiles[0] : null);
@@ -520,7 +565,7 @@
     items.forEach(it => { if (it.url && !timeline) URL.revokeObjectURL(it.url); });
     if (timed) {
       timeline = { url: URL.createObjectURL(timed.file) };
-      items = timed.rows.map(r => ({ name: r.name, start: r.start, end: r.end, text: '', ja: '' }));
+      items = timed.rows.map(r => ({ text: '', ja: '', ...r }));
       audioEl.src = timeline.url;
       audioEl.load();
       audioEl.playbackRate = settings.speed || 1.0;
@@ -533,7 +578,7 @@
     const buildList = () => {
       renderList();
       const folderName = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/')[0]
-        : (timeline ? nameOf(timed.file) : `${items.length}個のファイル`);
+        : (timeline ? (timed.title || nameOf(timed.file)) : `${items.length}個のファイル`);
       folderLabel.textContent = folderName;
       loadBar.style.display = 'flex';
       playerBar.style.display = 'grid';
@@ -543,7 +588,7 @@
       selectIndex(0, { autoplay: false });
     };
 
-    if (sentencesFile) {
+    if (sentencesFile && !(timed && timed.bundle)) {
       const reader = new FileReader();
       reader.onload = () => {
         const map = {};
@@ -596,13 +641,19 @@
   function renderList() {
     listPane.innerHTML = '';
     items.forEach((it, i) => {
+      if (it.part && (i === 0 || items[i - 1].part !== it.part)) {
+        const h = document.createElement('div');
+        h.className = 'part-head';
+        h.textContent = it.part;
+        listPane.appendChild(h);
+      }
       const row = document.createElement('div');
       row.className = 'row';
       row.tabIndex = 0;
       row.dataset.index = i;
       const jaHtml = it.ja ? `<span class="txt-ja">${esc(it.ja)}</span>` : '';
       row.innerHTML =
-        `<span class="num">${i + 1}</span>` +
+        `<span class="num">${it.num || i + 1}</span>` +
         `<span class="txt">` +
           `<span class="en-group">` +
             `<span class="txt-en">${esc(it.text || it.name)}</span>` +
@@ -707,7 +758,9 @@
     document.querySelectorAll('.row').forEach(r => r.classList.remove('current'));
     const rowEl = listPane.querySelector(`.row[data-index="${i}"]`);
     if (rowEl) { rowEl.classList.add('current'); scrollRowIntoView(rowEl); }
-    positionLabel.textContent = `${i + 1} / ${items.length}`;
+    positionLabel.textContent = it.part
+      ? `${it.part.replace('Part ', 'P')} · ${it.num} / ${items.filter(x => x.part === it.part).length}`
+      : `${i + 1} / ${items.length}`;
     if (timeline) {
       stopWatch();
       if (autoplay) playFrom(it.start);
