@@ -127,6 +127,11 @@
   .caption .cap-en { font-size: 16px; font-weight: 600; line-height: 1.45; }
   .caption .cap-ja { font-size: 13px; color: var(--ink-muted); line-height: 1.5; margin-top: 2px; }
   body.hide-ja .caption .cap-ja { display: none; }
+  /* 動画の下の今の文は英文だけ。英文にマウスを合わせる（スマホは英文をタップ）と訳が出る。
+     訳の場所はあけておき、出たり消えたりしても動画の位置が動かないようにする */
+  .caption .cap-en { cursor: help; }
+  .caption .cap-ja { visibility: hidden; }
+  .caption .cap-en:hover + .cap-ja, .caption .cap-ja:hover, .caption.show-ja .cap-ja { visibility: visible; }
 
   /* 操作ボタン（画面下に固定） */
   .player-bar {
@@ -547,6 +552,8 @@
   const videoPane = document.getElementById('videoPane');
   const capEn = document.getElementById('capEn');
   const capJa = document.getElementById('capJa');
+  // 動画の下の英文をタップすると訳を出す／隠す（マウスのないスマホ用。パソコンはマウスを合わせるだけで出る）
+  capEn.addEventListener('click', () => capEn.parentElement.classList.toggle('show-ja'));
   // 動画をタップ（クリック）すると一時停止・再開
   audioEl.addEventListener('click', () => actionPause());
   // 字幕の右端のボタン：動画と今の文をブラウザいっぱいに表示する／元に戻す
@@ -954,6 +961,7 @@
     const rowEl = listPane.querySelector(`.row[data-index="${i}"]`);
     if (rowEl) { rowEl.classList.add('current'); scrollRowIntoView(rowEl); }
     capEn.textContent = it.text || '';
+    capEn.parentElement.classList.remove('show-ja');     // 文が変わったら訳はまた隠す
     capJa.textContent = it.ja || '';
     positionLabel.textContent = it.part
       ? `${it.part.replace('Part ', 'P')} · ${it.num} / ${items.filter(x => x.part === it.part).length}`
