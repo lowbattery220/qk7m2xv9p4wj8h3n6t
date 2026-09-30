@@ -67,6 +67,20 @@
   }
   button.chip:hover { background: var(--row-hover); }
 
+  /* 動画（mp4）のとき：上のバーの中に動画と今の文を出す（文の一覧をスクロールしても動画が見える） */
+  .video-pane { display: none; background: #111; }
+  .video-pane.active { display: block; }
+  .video-pane video {
+    display: block; width: 100%; max-height: 42vh; margin: 0 auto; background: #000; cursor: pointer;
+  }
+  .caption {
+    padding: 8px 28px 10px; text-align: center; background: var(--paper);
+    border-top: 1px solid var(--panel-border); min-height: 3.2em;
+  }
+  .caption .cap-en { font-size: 16px; font-weight: 600; line-height: 1.45; }
+  .caption .cap-ja { font-size: 13px; color: var(--ink-muted); line-height: 1.5; margin-top: 2px; }
+  body.hide-ja .caption .cap-ja { display: none; }
+
   /* 操作ボタン（画面下に固定） */
   .player-bar {
     position: fixed;
@@ -225,6 +239,11 @@
 
     main { padding: 10px; }
     .row { padding: 10px 12px 10px 9px; gap: 10px; }
+
+    .video-pane video { max-height: 32vh; }
+    .caption { padding: 6px 12px 8px; }
+    .caption .cap-en { font-size: 14.5px; }
+    .caption .cap-ja { font-size: 12px; }
   }
 
   body.hide-ja .txt-ja { display: none; }
@@ -320,16 +339,21 @@
     <div class="header-actions">
       <div class="load-bar" id="loadBar" style="display:none;">
         <span id="folderLabel"></span>
-        <button class="chip" id="reloadBtn"><span class="pc-only">別の音声を</span>読み込む</button>
+        <button class="chip" id="reloadBtn"><span class="pc-only">別の教材を</span>読み込む</button>
       </div>
       <button class="chip" id="settingsBtn">設定</button>
     </div>
   </header>
+  <!-- 音声も動画も、この1つの video で再生する（音声のときは枠ごと隠す）。playsinline は iPhone で全画面にしないため -->
+  <div class="video-pane" id="videoPane">
+    <video id="audioEl" playsinline></video>
+    <div class="caption"><div class="cap-en" id="capEn"></div><div class="cap-ja" id="capJa"></div></div>
+  </div>
 </div>
 
 <main>
   <div class="empty-state" id="emptyState">
-    <p>教材を選んでください。<br>「〜_シャドーイング.mp3」なら、そのファイル1つを「ファイルを選ぶ」から選びます。<br>1文ずつの音声（0001.mp3 ...）のフォルダや、音声1本と「区切り時刻.txt」のフォルダも使えます。</p>
+    <p>教材を選んでください。<br>「〜_シャドーイング.mp3」「〜_シャドーイング_480p.mp4」などは、そのファイル1つを「ファイルを選ぶ」から選びます。<br>1文ずつの音声（0001.mp3 ...）のフォルダや、音声1本と「区切り時刻.txt」のフォルダも使えます。</p>
     <button class="big-btn" id="pickFilesBtn">ファイルを選ぶ</button>
     <p style="margin-top:14px;">
       <button class="big-btn secondary" id="pickFolderBtn">フォルダを選ぶ</button>
@@ -358,9 +382,8 @@
   </div>
 </div>
 
-<audio id="audioEl"></audio>
 <input type="file" id="folderInput" webkitdirectory directory multiple>
-<input type="file" id="filesInput" multiple accept="audio/*,.mp3,.m4a,.wav,.txt,text/plain">
+<input type="file" id="filesInput" multiple accept="audio/*,video/mp4,.mp3,.m4a,.wav,.mp4,.m4v,.txt,text/plain">
 
 <div class="overlay" id="settingsOverlay">
   <div class="modal" role="dialog" aria-labelledby="settingsTitle">
@@ -408,7 +431,8 @@
 </div>
 
 <script>
-  const AUDIO_EXT = ['.mp3', '.wav', '.m4a', '.ogg', '.opus'];
+  const AUDIO_EXT = ['.mp3', '.wav', '.m4a', '.ogg', '.opus', '.mp4', '.m4v'];   // 動画（mp4）も同じ扱い
+  const VIDEO_EXT = ['.mp4', '.m4v'];
   const STORAGE_KEY = 'shadowPlayerSettings_v2';
 
   const ACTIONS = [
@@ -454,6 +478,11 @@
   const loadBar = document.getElementById('loadBar');
   const folderLabel = document.getElementById('folderLabel');
   const speedVal = document.getElementById('speedVal');
+  const videoPane = document.getElementById('videoPane');
+  const capEn = document.getElementById('capEn');
+  const capJa = document.getElementById('capJa');
+  // 動画をタップ（クリック）すると一時停止・再開
+  audioEl.addEventListener('click', () => actionPause());
 
   audioEl.playbackRate = settings.speed || 1.0;
   speedVal.textContent = audioEl.playbackRate.toFixed(2) + 'x';
@@ -518,8 +547,58 @@
     return { source, rows };
   }
 
+  // 「〜_シャドーイング_480p.mp4」など：mp4 の情報欄（moov/udta/meta/ilst の ©cmt＝コメント）に、
+  // mp3 と同じ形の JSON が入っている（_tools/make_video.py が書く）
+  async function readMp4Bundle(file) {
+    try {
+      let off = 0;
+      while (off + 8 <= file.size) {
+        const h = new DataView(await file.slice(off, off + 16).arrayBuffer());
+        let size = h.getUint32(0), hdr = 8;
+        const type = String.fromCharCode(h.getUint8(4), h.getUint8(5), h.getUint8(6), h.getUint8(7));
+        if (size === 1) { size = Number(h.getBigUint64(8)); hdr = 16; }
+        else if (size === 0) size = file.size - off;
+        if (size < hdr) return null;
+        if (type === 'moov') {
+          const b = new Uint8Array(await file.slice(off + hdr, off + size).arrayBuffer());
+          const txt = findMp4Comment(b, 0, b.length);
+          const data = txt ? JSON.parse(txt) : null;
+          return data && Array.isArray(data.parts) ? data : null;
+        }
+        off += size;    // 映像の本体（mdat）などは読まずに飛ばす
+      }
+    } catch (e) {}
+    return null;
+  }
+  function findMp4Comment(b, start, end) {
+    const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+    let off = start;
+    while (off + 8 <= end) {
+      let size = dv.getUint32(off), hdr = 8;
+      const type = String.fromCharCode(b[off + 4], b[off + 5], b[off + 6], b[off + 7]);
+      if (size === 1) { size = Number(dv.getBigUint64(off + 8)); hdr = 16; }
+      else if (size === 0) size = end - off;
+      if (size < hdr || off + size > end) return null;
+      let found = null;
+      if (type === 'udta' || type === 'ilst') found = findMp4Comment(b, off + hdr, off + size);
+      else if (type === 'meta') {
+        // meta はふつう4バイトの版・フラグから始まる（無い書き方もある）
+        const s = off + hdr + (dv.getUint32(off + hdr) === 0 ? 4 : 0);
+        found = findMp4Comment(b, s, off + size);
+      } else if (type === '©cmt') {
+        const d = off + hdr;                       // 中の data 箱：大きさ・"data"・種類・言語のあとが本文
+        const txt = new TextDecoder('utf-8').decode(b.subarray(d + 16, d + dv.getUint32(d)));
+        if (txt.includes('"shadowing/1"')) found = txt;
+      }
+      if (found) return found;
+      off += size;
+    }
+    return null;
+  }
+
   // 「〜_シャドーイング.mp3」：mp3のタグ（TXXX "shadowing"）に英文・訳・時刻が JSON で入っている
   async function readBundle(file) {
+    if (VIDEO_EXT.some(ext => file.name.toLowerCase().endsWith(ext))) return readMp4Bundle(file);
     try {
       const h = new Uint8Array(await file.slice(0, 10).arrayBuffer());
       if (h[0] !== 0x49 || h[1] !== 0x44 || h[2] !== 0x33) return null;   // "ID3"
@@ -550,7 +629,7 @@
     const files = Array.from(fileList);
     const nameOf = f => f.name.normalize('NFC');
     const audioFiles = files.filter(f => AUDIO_EXT.some(ext => f.name.toLowerCase().endsWith(ext)));
-    if (audioFiles.length === 0) { alert('音声ファイル（mp3など）が見つかりませんでした。'); return; }
+    if (audioFiles.length === 0) { alert('音声・動画ファイル（mp3・mp4など）が見つかりませんでした。'); return; }
     audioFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     const sentencesFile = files.find(f => f.name.toLowerCase() === 'sentences.txt');
     const timesFile = files.find(f => nameOf(f) === '区切り時刻.txt');
@@ -577,6 +656,9 @@
     stopWatch();
     if (timeline) URL.revokeObjectURL(timeline.url);
     items.forEach(it => { if (it.url && !timeline) URL.revokeObjectURL(it.url); });
+    // 動画の教材なら、上に動画と今の文を出す
+    const isVideo = !!timed && VIDEO_EXT.some(ext => timed.file.name.toLowerCase().endsWith(ext));
+    videoPane.classList.toggle('active', isVideo);
     if (timed) {
       timeline = { url: URL.createObjectURL(timed.file) };
       items = timed.rows.map(r => ({ text: '', ja: '', ...r }));
@@ -772,6 +854,8 @@
     document.querySelectorAll('.row').forEach(r => r.classList.remove('current'));
     const rowEl = listPane.querySelector(`.row[data-index="${i}"]`);
     if (rowEl) { rowEl.classList.add('current'); scrollRowIntoView(rowEl); }
+    capEn.textContent = it.text || '';
+    capJa.textContent = it.ja || '';
     positionLabel.textContent = it.part
       ? `${it.part.replace('Part ', 'P')} · ${it.num} / ${items.filter(x => x.part === it.part).length}`
       : `${i + 1} / ${items.length}`;
