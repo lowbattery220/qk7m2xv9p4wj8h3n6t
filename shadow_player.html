@@ -67,16 +67,19 @@
   }
   button.chip:hover { background: var(--row-hover); }
 
-  /* 動画（mp4）のとき：パソコンは左40%に動画と今の文、右60%に文の一覧。
+  /* 動画（mp4）のとき：パソコンは左50%に動画と今の文、右50%に文の一覧（英文の下に訳）。
      動画は画面に貼りついたままなので、一覧をスクロールしても見える（top は上のバーの高さ。JS で入れる） */
   .video-pane { display: none; }
   .video-pane.active { display: block; }
   body.has-video main { display: flex; gap: 24px; align-items: flex-start; }
   body.has-video .video-pane {
-    flex: 0 0 40%; position: sticky; border-radius: 14px; overflow: hidden;
+    flex: 0 0 50%; position: sticky; border-radius: 14px; overflow: hidden;
     border: 1px solid var(--panel-border); background: var(--paper);
   }
-  body.has-video .list-pane { flex: 1 1 60%; min-width: 0; max-width: none; margin: 0; }
+  body.has-video .list-pane { flex: 1 1 50%; min-width: 0; max-width: none; margin: 0; }
+  /* 一覧の幅が半分なので、訳は英文の横ではなく下に出す（スマホと同じ並び） */
+  body.has-video .row .txt { display: block; }
+  body.has-video .row .txt-ja { display: block; border-left: none; padding-left: 0; margin-top: 4px; }
   .video-pane video {
     display: block; width: 100%; max-height: 60vh; margin: 0 auto; background: #000; cursor: pointer;
   }
