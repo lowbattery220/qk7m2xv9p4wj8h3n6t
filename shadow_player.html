@@ -67,23 +67,46 @@
   }
   button.chip:hover { background: var(--row-hover); }
 
-  /* 動画（mp4）のとき：パソコンは左35%に動画と今の文、右65%に文の一覧。
+  /* 動画（mp4）のとき：パソコンは左40%に動画と今の文、右60%に文の一覧。
      動画は画面に貼りついたままなので、一覧をスクロールしても見える（top は上のバーの高さ。JS で入れる） */
   .video-pane { display: none; }
   .video-pane.active { display: block; }
   body.has-video main { display: flex; gap: 24px; align-items: flex-start; }
   body.has-video .video-pane {
-    flex: 0 0 35%; position: sticky; border-radius: 14px; overflow: hidden;
+    flex: 0 0 40%; position: sticky; border-radius: 14px; overflow: hidden;
     border: 1px solid var(--panel-border); background: var(--paper);
   }
-  body.has-video .list-pane { flex: 1 1 65%; min-width: 0; max-width: none; margin: 0; }
+  body.has-video .list-pane { flex: 1 1 60%; min-width: 0; max-width: none; margin: 0; }
   .video-pane video {
     display: block; width: 100%; max-height: 60vh; margin: 0 auto; background: #000; cursor: pointer;
   }
   .caption {
-    padding: 10px 16px 12px; text-align: center; background: var(--paper);
+    position: relative;
+    padding: 10px 48px 12px; text-align: center; background: var(--paper);
     border-top: 1px solid var(--panel-border); min-height: 3.2em;
   }
+  /* 字幕の右端の「大きく表示」ボタン */
+  .full-btn {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--panel-border);
+    background: var(--panel); color: var(--ink); cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .full-btn:hover { background: var(--row-hover); }
+  .full-btn svg { width: 16px; height: 16px; pointer-events: none; }
+  .full-btn .icon-shrink { display: none; }
+  body.video-full .full-btn .icon-expand { display: none; }
+  body.video-full .full-btn .icon-shrink { display: block; }
+
+  /* 大きく表示：動画と今の文をブラウザいっぱいに（下の操作ボタンは残す。--bar-h は操作ボタンの高さ。JS で入れる） */
+  body.video-full .video-pane.active {
+    position: fixed; top: 0; left: 0; right: 0; bottom: var(--bar-h, 0px); z-index: 6;
+    display: flex; flex-direction: column; margin: 0; border: none; border-radius: 0; background: #000;
+  }
+  body.video-full .video-pane video { flex: 1; min-height: 0; height: 100%; max-height: none; object-fit: contain; }
+  body.video-full .caption { flex: 0 0 auto; }
+  body.video-full .caption .cap-en { font-size: 22px; }
+  body.video-full .caption .cap-ja { font-size: 16px; }
   .caption .cap-en { font-size: 16px; font-weight: 600; line-height: 1.45; }
   .caption .cap-ja { font-size: 13px; color: var(--ink-muted); line-height: 1.5; margin-top: 2px; }
   body.hide-ja .caption .cap-ja { display: none; }
@@ -370,7 +393,13 @@
   <!-- 音声も動画も、この1つの video で再生する（音声のときは枠ごと隠す）。playsinline は iPhone で全画面にしないため -->
   <div class="video-pane" id="videoPane">
     <video id="audioEl" playsinline></video>
-    <div class="caption"><div class="cap-en" id="capEn"></div><div class="cap-ja" id="capJa"></div></div>
+    <div class="caption">
+      <div class="cap-en" id="capEn"></div><div class="cap-ja" id="capJa"></div>
+      <button type="button" class="full-btn" id="fullBtn" title="大きく表示" aria-label="動画を大きく表示">
+        <svg class="icon-expand" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg>
+        <svg class="icon-shrink" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4"/></svg>
+      </button>
+    </div>
   </div>
   <div class="list-pane" id="listPane"></div>
 </main>
@@ -495,6 +524,16 @@
   const capJa = document.getElementById('capJa');
   // 動画をタップ（クリック）すると一時停止・再開
   audioEl.addEventListener('click', () => actionPause());
+  // 字幕の右端のボタン：動画と今の文をブラウザいっぱいに表示する／元に戻す
+  function setVideoFull(on) {
+    document.body.classList.toggle('video-full', on);
+    const btn = document.getElementById('fullBtn');
+    btn.title = on ? '元の大きさに戻す（Esc）' : '大きく表示';
+    btn.setAttribute('aria-label', btn.title);
+    updateLayoutOffsets();
+  }
+  document.getElementById('fullBtn').addEventListener('click', () =>
+    setVideoFull(!document.body.classList.contains('video-full')));
 
   audioEl.playbackRate = settings.speed || 1.0;
   speedVal.textContent = audioEl.playbackRate.toFixed(2) + 'x';
@@ -671,6 +710,7 @@
     // 動画の教材なら、上に動画と今の文を出す
     const isVideo = !!timed && VIDEO_EXT.some(ext => timed.file.name.toLowerCase().endsWith(ext));
     videoPane.classList.toggle('active', isVideo);
+    if (!isVideo) setVideoFull(false);
     document.body.classList.toggle('has-video', isVideo);
     if (timed) {
       timeline = { url: URL.createObjectURL(timed.file) };
@@ -730,9 +770,12 @@
   function updateLayoutOffsets() {
     const barH = playerBar.style.display === 'none' ? 0 : playerBar.offsetHeight;
     mainEl.style.paddingBottom = `${barH + 24}px`;
+    document.documentElement.style.setProperty('--bar-h', `${barH}px`);
     // 動画は上のバーのすぐ下に貼りつける（パソコンは少しすき間をあける）
     const narrow = window.matchMedia('(max-width: 720px)').matches;
-    videoPane.style.top = `${topSticky.offsetHeight + (narrow ? 0 : 16)}px`;
+    // 大きく表示しているときは、画面のいちばん上から
+    videoPane.style.top = document.body.classList.contains('video-full') ? '0px'
+      : `${topSticky.offsetHeight + (narrow ? 0 : 16)}px`;
   }
   window.addEventListener('resize', updateLayoutOffsets);
 
@@ -1005,6 +1048,8 @@
     }
     // 設定画面の入力欄・選択欄を操作しているときは、ショートカットを働かせない
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    // 大きく表示しているときは Esc で元に戻す
+    if (e.code === 'Escape' && document.body.classList.contains('video-full')) { setVideoFull(false); return; }
     const action = Object.keys(settings.bindings).find(a => settings.bindings[a] === e.code);
     if (action && ACTION_FN[action]) {
       e.preventDefault();
