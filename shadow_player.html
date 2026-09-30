@@ -15,6 +15,20 @@
     --accent-ink: #F3EFE2;
     --gold: #C98A2C;
     --row-hover: #E9E1CC;
+    --row-current: #E7EFEC;
+  }
+  /* 設定の「デザイン」で「黒い背景」を選んだとき */
+  body.theme-dark {
+    --paper: #121212;
+    --panel: #1C1C1C;
+    --panel-border: #333333;
+    --ink: #F2F2F2;
+    --ink-muted: #A6A6A6;
+    --accent: #3BA893;
+    --accent-ink: #0D0D0D;
+    --gold: #E0A548;
+    --row-hover: #262626;
+    --row-current: #1E3A35;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -243,7 +257,7 @@
     font-size: 12.5px; line-height: 1.6; color: var(--ink-muted);
     border-left: 1px solid var(--panel-border); padding-left: 20px;
   }
-  .row.current { background: #E7EFEC; border-left-color: var(--accent); }
+  .row.current { background: var(--row-current); border-left-color: var(--accent); }
   .row.current .txt-en { font-weight: 600; }
   .row.current .num { background: rgba(31,110,98,0.16); color: var(--accent); }
 
@@ -436,6 +450,13 @@
     <h3 class="section-title">表示・再生</h3>
     <div class="setting-group">
       <div class="bind-row">
+        <span class="label">デザイン</span>
+        <select id="themeSelect" class="setting-select">
+          <option value="light">明るい背景</option>
+          <option value="dark">黒い背景・白い文字</option>
+        </select>
+      </div>
+      <div class="bind-row">
         <span class="label">日本語訳</span>
         <select id="jaSelect" class="setting-select">
           <option value="show">表示する</option>
@@ -498,11 +519,12 @@
         const parsed = JSON.parse(raw);
         parsed.bindings = { ...DEFAULT_BINDINGS, ...(parsed.bindings || {}) };
         if (parsed.showJa === undefined) parsed.showJa = true;
+        if (!parsed.theme) parsed.theme = 'light';
         if (!parsed.rewindSec) parsed.rewindSec = DEFAULT_REWIND_SEC;
         return parsed;
       }
     } catch (e) {}
-    return { bindings: { ...DEFAULT_BINDINGS }, speed: 1.0, mode: 'stop', showJa: true, rewindSec: DEFAULT_REWIND_SEC };
+    return { bindings: { ...DEFAULT_BINDINGS }, speed: 1.0, mode: 'stop', showJa: true, rewindSec: DEFAULT_REWIND_SEC, theme: 'light' };
   }
   function saveSettings() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch (e) {}
@@ -546,6 +568,18 @@
   modeSelect.addEventListener('change', () => {
     settings.mode = modeSelect.value;
     saveSettings();
+  });
+
+  const themeSelect = document.getElementById('themeSelect');
+  function applyTheme() {
+    document.body.classList.toggle('theme-dark', settings.theme === 'dark');
+    themeSelect.value = settings.theme === 'dark' ? 'dark' : 'light';
+  }
+  applyTheme();
+  themeSelect.addEventListener('change', () => {
+    settings.theme = themeSelect.value;
+    saveSettings();
+    applyTheme();
   });
 
   const jaSelect = document.getElementById('jaSelect');
