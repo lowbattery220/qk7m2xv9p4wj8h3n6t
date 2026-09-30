@@ -67,14 +67,21 @@
   }
   button.chip:hover { background: var(--row-hover); }
 
-  /* 動画（mp4）のとき：上のバーの中に動画と今の文を出す（文の一覧をスクロールしても動画が見える） */
-  .video-pane { display: none; background: #111; }
+  /* 動画（mp4）のとき：パソコンは左35%に動画と今の文、右65%に文の一覧。
+     動画は画面に貼りついたままなので、一覧をスクロールしても見える（top は上のバーの高さ。JS で入れる） */
+  .video-pane { display: none; }
   .video-pane.active { display: block; }
+  body.has-video main { display: flex; gap: 24px; align-items: flex-start; }
+  body.has-video .video-pane {
+    flex: 0 0 35%; position: sticky; border-radius: 14px; overflow: hidden;
+    border: 1px solid var(--panel-border); background: var(--paper);
+  }
+  body.has-video .list-pane { flex: 1 1 65%; min-width: 0; max-width: none; margin: 0; }
   .video-pane video {
-    display: block; width: 100%; max-height: 42vh; margin: 0 auto; background: #000; cursor: pointer;
+    display: block; width: 100%; max-height: 60vh; margin: 0 auto; background: #000; cursor: pointer;
   }
   .caption {
-    padding: 8px 28px 10px; text-align: center; background: var(--paper);
+    padding: 10px 16px 12px; text-align: center; background: var(--paper);
     border-top: 1px solid var(--panel-border); min-height: 3.2em;
   }
   .caption .cap-en { font-size: 16px; font-weight: 600; line-height: 1.45; }
@@ -240,6 +247,11 @@
     main { padding: 10px; }
     .row { padding: 10px 12px 10px 9px; gap: 10px; }
 
+    /* スマホは上に動画と今の文、下に文の一覧 */
+    body.has-video main { display: block; padding-top: 0; }
+    body.has-video .video-pane {
+      margin: 0 -10px 10px; border-radius: 0; border: none; border-bottom: 1px solid var(--panel-border); z-index: 4;
+    }
     .video-pane video { max-height: 32vh; }
     .caption { padding: 6px 12px 8px; }
     .caption .cap-en { font-size: 14.5px; }
@@ -344,11 +356,6 @@
       <button class="chip" id="settingsBtn">設定</button>
     </div>
   </header>
-  <!-- 音声も動画も、この1つの video で再生する（音声のときは枠ごと隠す）。playsinline は iPhone で全画面にしないため -->
-  <div class="video-pane" id="videoPane">
-    <video id="audioEl" playsinline></video>
-    <div class="caption"><div class="cap-en" id="capEn"></div><div class="cap-ja" id="capJa"></div></div>
-  </div>
 </div>
 
 <main>
@@ -360,6 +367,11 @@
     </p>
   </div>
 
+  <!-- 音声も動画も、この1つの video で再生する（音声のときは枠ごと隠す）。playsinline は iPhone で全画面にしないため -->
+  <div class="video-pane" id="videoPane">
+    <video id="audioEl" playsinline></video>
+    <div class="caption"><div class="cap-en" id="capEn"></div><div class="cap-ja" id="capJa"></div></div>
+  </div>
   <div class="list-pane" id="listPane"></div>
 </main>
 
@@ -659,6 +671,7 @@
     // 動画の教材なら、上に動画と今の文を出す
     const isVideo = !!timed && VIDEO_EXT.some(ext => timed.file.name.toLowerCase().endsWith(ext));
     videoPane.classList.toggle('active', isVideo);
+    document.body.classList.toggle('has-video', isVideo);
     if (timed) {
       timeline = { url: URL.createObjectURL(timed.file) };
       items = timed.rows.map(r => ({ text: '', ja: '', ...r }));
@@ -717,13 +730,19 @@
   function updateLayoutOffsets() {
     const barH = playerBar.style.display === 'none' ? 0 : playerBar.offsetHeight;
     mainEl.style.paddingBottom = `${barH + 24}px`;
+    // 動画は上のバーのすぐ下に貼りつける（パソコンは少しすき間をあける）
+    const narrow = window.matchMedia('(max-width: 720px)').matches;
+    videoPane.style.top = `${topSticky.offsetHeight + (narrow ? 0 : 16)}px`;
   }
   window.addEventListener('resize', updateLayoutOffsets);
 
   function scrollRowIntoView(rowEl) {
     const margin = 8;
     const r = rowEl.getBoundingClientRect();
-    const visibleTop = topSticky.getBoundingClientRect().bottom + margin;
+    // スマホで動画を出しているときは、動画の下からが一覧の見える範囲
+    const narrow = window.matchMedia('(max-width: 720px)').matches;
+    const cover = narrow && document.body.classList.contains('has-video') ? videoPane : topSticky;
+    const visibleTop = cover.getBoundingClientRect().bottom + margin;
     const visibleBottom = playerBar.getBoundingClientRect().top - margin;
     if (r.top < visibleTop) window.scrollBy(0, r.top - visibleTop);
     else if (r.bottom > visibleBottom) window.scrollBy(0, r.bottom - visibleBottom);
