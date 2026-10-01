@@ -17,8 +17,9 @@
     --row-hover: #E9E1CC;
     --row-current: #E7EFEC;
   }
-  /* 設定の「デザイン」で「黒い背景」を選んだとき */
-  body.theme-dark {
+  /* 設定の「デザイン」で「黒い背景」を選んだとき。html（ページの外側）に付けるので、
+     画面の下の余白やスクロールの端まで同じ色になる */
+  :root.theme-dark {
     --paper: #121212;
     --panel: #1C1C1C;
     --panel-border: #333333;
@@ -579,7 +580,7 @@
 
   const themeSelect = document.getElementById('themeSelect');
   function applyTheme() {
-    document.body.classList.toggle('theme-dark', settings.theme === 'dark');
+    document.documentElement.classList.toggle('theme-dark', settings.theme === 'dark');
     themeSelect.value = settings.theme === 'dark' ? 'dark' : 'light';
   }
   applyTheme();
