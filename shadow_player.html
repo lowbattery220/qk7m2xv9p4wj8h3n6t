@@ -98,6 +98,14 @@
   .video-pane video {
     display: block; width: 100%; max-height: 60vh; margin: 0 auto; background: #000; cursor: pointer;
   }
+  /* 再生位置のバー（動画の下） */
+  .seek-row {
+    display: flex; align-items: center; gap: 10px; padding: 6px 12px;
+    background: var(--paper); border-top: 1px solid var(--panel-border);
+  }
+  .seek-row input[type=range] { flex: 1; min-width: 0; margin: 0; accent-color: var(--accent); cursor: pointer; height: 22px; }
+  .seek-time { font-size: 12px; color: var(--ink-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  body.video-full .seek-row { flex: 0 0 auto; }
   .caption {
     position: relative;
     padding: 10px 48px 12px; text-align: center; background: var(--paper);
@@ -412,6 +420,11 @@
   <!-- 音声も動画も、この1つの video で再生する（音声のときは枠ごと隠す）。playsinline は iPhone で全画面にしないため -->
   <div class="video-pane" id="videoPane">
     <video id="audioEl" playsinline></video>
+    <!-- 全体の中のどこを再生しているかのバー。つまんで動かすと、その場所へ移る -->
+    <div class="seek-row">
+      <input type="range" id="seekBar" min="0" max="0" step="0.1" value="0" aria-label="再生位置">
+      <span class="seek-time" id="seekTime">0:00 / 0:00</span>
+    </div>
     <div class="caption">
       <div class="cap-en" id="capEn"></div><div class="cap-ja" id="capJa"></div>
       <button type="button" class="full-btn" id="fullBtn" title="大きく表示" aria-label="動画を大きく表示">
@@ -950,16 +963,8 @@
 
   function selectIndex(i, { autoplay }) {
     if (i < 0 || i >= items.length) return;
-    currentIndex = i;
+    showIndex(i);
     const it = items[i];
-    document.querySelectorAll('.row').forEach(r => r.classList.remove('current'));
-    const rowEl = listPane.querySelector(`.row[data-index="${i}"]`);
-    if (rowEl) { rowEl.classList.add('current'); scrollRowIntoView(rowEl); }
-    capEn.textContent = it.text || '';
-    capJa.textContent = it.ja || '';
-    positionLabel.textContent = it.part
-      ? `${it.part.replace('Part ', 'P')} · ${it.num} / ${items.filter(x => x.part === it.part).length}`
-      : `${i + 1} / ${items.length}`;
     if (timeline) {
       stopWatch();
       if (autoplay) playFrom(it.start);
@@ -975,6 +980,60 @@
       if (audioEl.readyState >= 1) playIt();
       else audioEl.addEventListener('loadedmetadata', playIt, { once: true });
     }
+  }
+  // 今の文を i にする（一覧の色・動画の下の字幕・位置の表示）。再生の位置は変えない
+  function showIndex(i) {
+    currentIndex = i;
+    const it = items[i];
+    document.querySelectorAll('.row').forEach(r => r.classList.remove('current'));
+    const rowEl = listPane.querySelector(`.row[data-index="${i}"]`);
+    if (rowEl) { rowEl.classList.add('current'); scrollRowIntoView(rowEl); }
+    capEn.textContent = it.text || '';
+    capJa.textContent = it.ja || '';
+    positionLabel.textContent = it.part
+      ? `${it.part.replace('Part ', 'P')} · ${it.num} / ${items.filter(x => x.part === it.part).length}`
+      : `${i + 1} / ${items.length}`;
+  }
+
+  // ---- 再生位置のバー（動画のとき） ----
+  const seekBar = document.getElementById('seekBar');
+  const seekTime = document.getElementById('seekTime');
+  let seeking = false;
+  function clock(t) {
+    t = Math.max(0, Math.floor(t || 0));
+    const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), sec = String(t % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+  }
+  function showSeek(t) {
+    const d = audioEl.duration || 0;
+    seekTime.textContent = `${clock(t)} / ${clock(d)}`;
+  }
+  function updateSeek() {
+    if (seeking) return;
+    seekBar.max = audioEl.duration || 0;
+    seekBar.value = audioEl.currentTime || 0;
+    showSeek(audioEl.currentTime);
+  }
+  audioEl.addEventListener('loadedmetadata', updateSeek);
+  audioEl.addEventListener('timeupdate', updateSeek);
+  audioEl.addEventListener('seeked', updateSeek);
+  // つまんで動かしている間は時刻だけ変え、放したらその場所へ
+  seekBar.addEventListener('input', () => { seeking = true; showSeek(+seekBar.value); });
+  seekBar.addEventListener('change', () => {
+    seeking = false;
+    seekTo(+seekBar.value);
+    seekBar.blur();     // バーを触った後も、キー（Enter・矢印など）がすぐ効くように
+  });
+  function seekTo(t) {
+    if (!timeline || !items.length) return;
+    // その時刻の文（文と文の間なら次の文）を今の文にする。再生中ならそのまま続け、文の終わりの止め方はいつもどおり
+    let i = items.findIndex(it => t < it.end);
+    if (i < 0) i = items.length - 1;
+    const wasPlaying = !audioEl.paused;
+    stopWatch();
+    showIndex(i);
+    audioEl.currentTime = t;
+    if (wasPlaying) audioEl.play();
   }
 
   function actionReplay() {
