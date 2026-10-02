@@ -582,6 +582,7 @@
   modeSelect.value = settings.mode || 'stop';
   modeSelect.addEventListener('change', () => {
     settings.mode = modeSelect.value;
+    watchEnd();     // 再生中に切り替えても、すぐ新しい再生のしかたに
     saveSettings();
   });
 
@@ -929,6 +930,7 @@
   function watchEnd() {
     stopWatch();
     if (!timeline || currentIndex < 0 || audioEl.paused) return;
+    if ((settings.mode || 'stop') === 'continuous') { followPlayback(); return; }
     const end = items[currentIndex].end;
     const check = () => {
       if (audioEl.paused) { stopWatch(); return true; }
@@ -942,6 +944,31 @@
     const arm = () => {
       const ms = (end - audioEl.currentTime) / (audioEl.playbackRate || 1) * 1000;
       stopTimer = setTimeout(() => { if (!check()) arm(); }, Math.max(10, ms));
+    };
+    arm();
+  }
+  // 連続再生：映画（音声）は止めず・飛ばさずにそのまま流し、時刻が次の文に来たら今の文（字幕・一覧）だけを切り替える。
+  // 文と文の間も、最後の文のあと（エンドロール）も途切れずに見られる
+  function followPlayback() {
+    const tick = () => {
+      if (audioEl.paused) { stopWatch(); return; }
+      const t = audioEl.currentTime;
+      let i = currentIndex;
+      while (i + 1 < items.length && t >= items[i + 1].start) i++;
+      if (i !== currentIndex) showIndex(i);
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    // 別のタブを見ているときなどは上が止まるので、タイマーでも
+    const arm = () => {
+      stopTimer = setTimeout(() => {
+        if (audioEl.paused) return;
+        const t = audioEl.currentTime;
+        let i = currentIndex;
+        while (i + 1 < items.length && t >= items[i + 1].start) i++;
+        if (i !== currentIndex) showIndex(i);
+        arm();
+      }, 250);
     };
     arm();
   }
