@@ -978,10 +978,41 @@
     if ((settings.mode || 'stop') === 'continuous' && currentIndex + 1 < items.length) { actionNext(); return; }
     audioEl.pause();
   }
+  // 再生する。失敗したら（ブラウザから離れて戻ったあとなど）動画を読み込み直して、同じ位置から再生し直す
+  function safePlay() {
+    const p = audioEl.play();
+    if (p && p.catch) p.catch(err => {
+      if (err && err.name === 'AbortError') return;          // 別の操作で取り消されただけ
+      reloadAt(audioEl.currentTime, true);
+    });
+  }
+  let lastReload = 0;
+  function reloadAt(t, play) {
+    if (!timeline || Date.now() - lastReload < 5000) return;     // 読み込み直しは5秒に1回まで（壊れた動画でくり返さない）
+    lastReload = Date.now();
+    const rate = audioEl.playbackRate;
+    audioEl.src = timeline.url;
+    audioEl.load();
+    audioEl.addEventListener('loadedmetadata', () => {
+      audioEl.currentTime = t;
+      audioEl.playbackRate = rate;
+      if (play) audioEl.play().catch(() => {});
+    }, { once: true });
+  }
+  // ブラウザのタブが見えなくなると、ブラウザは映像の処理を止める（声だけ進む）。戻ってきたら今の位置へ移り直して、
+  // 映像と声をそろえ直す（ユーザー：別のアプリを見て戻ると、声と別の場面が映る・再生できなくなる）
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || !timeline || currentIndex < 0) return;
+    const t = audioEl.currentTime;
+    if (audioEl.error) { reloadAt(t, !audioEl.paused); return; }
+    audioEl.currentTime = Math.max(0, t - 0.01);      // 同じ位置を入れてもブラウザは何もしないので、ほんの少し前へ移す
+  });
+  // 動画の読み込みが壊れたら（長く離れていたときなど）、同じ位置から読み込み直す
+  audioEl.addEventListener('error', () => { if (timeline) reloadAt(audioEl.currentTime || 0, false); });
   function playFrom(t) {
     whenReady(() => {
       audioEl.currentTime = t;
-      audioEl.play();
+      safePlay();
     });
   }
   audioEl.addEventListener('play', watchEnd);
@@ -1060,7 +1091,7 @@
     stopWatch();
     showIndex(i);
     audioEl.currentTime = t;
-    if (wasPlaying) audioEl.play();
+    if (wasPlaying) safePlay();
   }
 
   function actionReplay() {
@@ -1080,14 +1111,14 @@
       const it = items[currentIndex];
       if (audioEl.currentTime >= it.end - 0.02 || audioEl.currentTime < it.start - 0.5) { playFrom(it.start); return; }
     }
-    if (audioEl.paused) audioEl.play(); else audioEl.pause();
+    if (audioEl.paused) safePlay(); else audioEl.pause();
   }
   function actionRewind() {
     if (currentIndex === -1) return;
     const floor = timeline ? items[currentIndex].start : 0;
     audioEl.currentTime = Math.max(floor, audioEl.currentTime - settings.rewindSec);
     // 文の再生が終わった後でも、押せば最後の数秒をもう一度聞ける
-    if (audioEl.paused) audioEl.play();
+    if (audioEl.paused) safePlay();
   }
   function actionNext() { selectIndex(currentIndex + 1, { autoplay: true }); }
   function actionPrev() { selectIndex(currentIndex - 1, { autoplay: true }); }
