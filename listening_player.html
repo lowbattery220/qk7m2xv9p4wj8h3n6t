@@ -1,0 +1,1294 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>リスニング・プレーヤー</title>
+<style>
+  :root {
+    --paper: #FBF7EF;
+    --panel: #F1EAD9;
+    --panel-border: #E2D8BF;
+    --ink: #22201B;
+    --ink-muted: #726C5E;
+    --accent: #1F6E62;
+    --accent-ink: #F3EFE2;
+    --gold: #C98A2C;
+    --row-hover: #E9E1CC;
+    --row-current: #E7EFEC;
+  }
+  /* 設定の「デザイン」で「黒い背景」を選んだとき。html（ページの外側）に付けるので、
+     画面の下の余白やスクロールの端まで同じ色になる */
+  :root.theme-dark {
+    --paper: #121212;
+    --panel: #1C1C1C;
+    --panel-border: #333333;
+    --ink: #F2F2F2;
+    --ink-muted: #A6A6A6;
+    --accent: #3BA893;
+    --accent-ink: #0D0D0D;
+    --gold: #E0A548;
+    --row-hover: #262626;
+    --row-current: #1E3A35;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  .top-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--paper);
+    border-bottom: 1px solid var(--panel-border);
+  }
+
+  header {
+    padding: 16px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  h1.brand {
+    font-family: "Iowan Old Style", "Palatino Linotype", "URW Palladio", P052, serif;
+    font-weight: 600;
+    font-size: 23px;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    letter-spacing: 0.01em;
+  }
+  .brand-mark { color: var(--accent); flex-shrink: 0; }
+  .brand-main { color: var(--ink); }
+  .brand-sub { color: var(--ink-muted); font-weight: 400; margin-left: 6px; }
+  .header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .load-bar { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-muted); }
+  button.chip {
+    font-size: 13px;
+    padding: 7px 14px;
+    border-radius: 7px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  button.chip:hover { background: var(--row-hover); }
+
+  /* 動画（mp4）のとき：パソコンは左50%に動画と今の文、右50%に文の一覧（英文の下に訳）。
+     動画は画面に貼りついたままなので、一覧をスクロールしても見える（top は上のバーの高さ。JS で入れる） */
+  .video-pane { display: none; }
+  .video-pane.active { display: block; }
+  body.has-video main { display: flex; gap: 24px; align-items: flex-start; }
+  body.has-video .video-pane {
+    flex: 0 0 50%; position: sticky; border-radius: 14px; overflow: hidden;
+    border: 1px solid var(--panel-border); background: var(--paper);
+  }
+  body.has-video .list-pane { flex: 1 1 50%; min-width: 0; max-width: none; margin: 0; }
+  /* 一覧の幅が半分なので、訳は英文の横ではなく下に出す（スマホと同じ並び） */
+  body.has-video .row .txt { display: block; }
+  body.has-video .row .txt-ja { display: block; border-left: none; padding-left: 0; margin-top: 4px; }
+  .video-pane video {
+    display: block; width: 100%; max-height: 60vh; margin: 0 auto; background: #000; cursor: pointer;
+  }
+  /* 再生位置のバー（動画の下） */
+  .seek-row {
+    display: flex; align-items: center; gap: 10px; padding: 6px 12px;
+    background: var(--paper); border-top: 1px solid var(--panel-border);
+  }
+  .seek-row input[type=range] { flex: 1; min-width: 0; margin: 0; accent-color: var(--accent); cursor: pointer; height: 22px; }
+  .seek-time { font-size: 12px; color: var(--ink-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  body.video-full .seek-row { flex: 0 0 auto; }
+  .caption {
+    position: relative;
+    padding: 10px 48px 12px; text-align: center; background: var(--paper);
+    border-top: 1px solid var(--panel-border); min-height: 3.2em;
+  }
+  /* 字幕の右端の「大きく表示」ボタン */
+  .full-btn {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--panel-border);
+    background: var(--panel); color: var(--ink); cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .full-btn:hover { background: var(--row-hover); }
+  .full-btn svg { width: 16px; height: 16px; pointer-events: none; }
+  .full-btn .icon-shrink { display: none; }
+  body.video-full .full-btn .icon-expand { display: none; }
+  body.video-full .full-btn .icon-shrink { display: block; }
+
+  /* 大きく表示：動画と今の文をブラウザいっぱいに（下の操作ボタンは残す。--bar-h は操作ボタンの高さ。JS で入れる） */
+  body.video-full .video-pane.active {
+    position: fixed; top: 0; left: 0; right: 0; bottom: var(--bar-h, 0px); z-index: 6;
+    display: flex; flex-direction: column; margin: 0; border: none; border-radius: 0; background: #000;
+  }
+  body.video-full .video-pane video { flex: 1; min-height: 0; height: 100%; max-height: none; object-fit: contain; }
+  body.video-full .caption { flex: 0 0 auto; }
+  body.video-full .caption .cap-en { font-size: 22px; }
+  body.video-full .caption .cap-ja { font-size: 16px; }
+  .caption .cap-en { font-size: 16px; font-weight: 600; line-height: 1.45; }
+  .caption .cap-ja { font-size: 13px; color: var(--ink-muted); line-height: 1.5; margin-top: 2px; }
+  /* 動画の下の今の文も、英文の下にいつも訳を出す。設定の「日本語訳」（J キー）で、右の一覧の訳と一緒に消える */
+  body.hide-ja .caption .cap-ja { display: none; }
+
+  /* 操作ボタン（画面下に固定） */
+  .player-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    background: var(--paper);
+    /* 再生ボタンを画面の真ん中に置き、左に「何文目か」、右に速度を添える */
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    column-gap: 28px;
+    padding: 12px 28px;
+    border-top: 1px solid var(--panel-border);
+    box-shadow: 0 -4px 16px rgba(34,32,27,0.06);
+  }
+  .player-bar .now { justify-self: end; }
+  .player-bar .position {
+    color: var(--ink-muted);
+    font-size: 13px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .status-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--gold); margin-right: 8px; opacity: 0; transition: opacity 0.15s; vertical-align: middle;
+  }
+  .status-dot.playing { opacity: 1; animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.55; } }
+
+  .controls { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .rewind-btn { font-size: 13px; font-variant-numeric: tabular-nums; }
+  .ctrl-btn {
+    border: 1px solid var(--panel-border); background: var(--panel); color: var(--ink);
+    border-radius: 50%; width: 40px; height: 40px; font-size: 15px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.1s ease, background 0.12s ease;
+  }
+  .ctrl-btn:hover { background: var(--row-hover); }
+  .ctrl-btn:active, .play-btn:active, .big-btn:active { transform: scale(0.92); }
+  .ctrl-btn:focus-visible, .row:focus-visible, .big-btn:focus-visible, button.chip:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  .play-btn {
+    width: 48px; height: 48px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
+    border: none; font-size: 17px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: transform 0.1s ease, filter 0.12s ease;
+  }
+  .play-btn:hover { filter: brightness(1.08); }
+
+  .speed-row {
+    display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-muted);
+    justify-self: start;
+  }
+  .speed-row button {
+    width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--panel-border);
+    background: var(--panel); cursor: pointer; font-size: 14px; color: var(--ink);
+  }
+  .speed-row button:hover { background: var(--row-hover); }
+  .speed-val { min-width: 50px; font-variant-numeric: tabular-nums; text-align: center; }
+  .speed-set { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .speed-set button {
+    width: 32px; height: 32px; border-radius: 7px; border: 1px solid var(--panel-border);
+    background: var(--paper); cursor: pointer; font-size: 15px; color: var(--ink);
+  }
+
+  /* Main content */
+  main { padding: 28px; }
+
+  .empty-state { margin: 60px auto; text-align: center; max-width: 420px; padding: 40px; }
+  .empty-state p { color: var(--ink-muted); font-size: 14px; line-height: 1.7; }
+  .big-btn {
+    font-size: 15px; padding: 12px 26px; border-radius: 10px; border: none;
+    background: var(--accent); color: var(--accent-ink); cursor: pointer; font-weight: 600;
+  }
+  .big-btn:hover { filter: brightness(1.08); }
+  .big-btn.secondary { background: var(--panel); color: var(--ink); border: 1px solid var(--panel-border); }
+
+  .list-pane {
+    display: none;
+    width: 100%;
+    max-width: 1080px;
+    margin: 0 auto;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(34,32,27,0.05), 0 10px 28px rgba(34,32,27,0.07);
+  }
+  .list-pane.active { display: block; }
+  body.hide-ja .list-pane { max-width: 760px; }
+
+  .row {
+    padding: 12px 20px 12px 17px;
+    border-bottom: 1px solid var(--panel-border);
+    border-left: 3px solid transparent;
+    cursor: pointer;
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .row:last-child { border-bottom: none; }
+  .row:hover { background: var(--row-hover); }
+  .row .num {
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-muted);
+    font-size: 11.5px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: rgba(31,110,98,0.08);
+  }
+  .row .txt {
+    font-size: 14px; line-height: 1.5; text-align: left; flex: 1; min-width: 0;
+    display: flex; gap: 20px; align-items: flex-start;
+  }
+  .row .en-group { flex: 1.15; min-width: 0; display: flex; gap: 10px; align-items: flex-start; }
+  .row .txt-en { flex: 1; min-width: 0; }
+  .row .txt-ja {
+    flex: 1; min-width: 0;
+    font-size: 12.5px; line-height: 1.6; color: var(--ink-muted);
+    border-left: 1px solid var(--panel-border); padding-left: 20px;
+  }
+  .row.current { background: var(--row-current); border-left-color: var(--accent); }
+  .row.current .txt-en { font-weight: 600; }
+  .row.current .num { background: rgba(31,110,98,0.16); color: var(--accent); }
+
+  /* スマホ幅：英文と訳を上下に並べ、上下のバーをコンパクトにする */
+  @media (max-width: 720px) {
+    .row .txt { display: block; }
+    .row .txt-ja {
+      display: block; border-left: none; padding-left: 0; margin-top: 4px;
+    }
+
+    .pc-only, #folderLabel { display: none; }
+
+    header { padding: 8px 14px; gap: 6px; }
+    h1.brand { font-size: 17px; }
+    .header-actions { gap: 6px; }
+    button.chip { font-size: 12px; padding: 5px 10px; }
+
+    /* 押し間違えないよう、操作ボタンを大きくして画面の横いっぱいに並べる。
+       「何文目か」は出さず、速度は「設定」の中で変える */
+    .player-bar { grid-template-columns: 1fr; padding: 10px 16px 14px; }
+    .player-bar .now, .speed-row { display: none; }
+    .controls { grid-column: 1; grid-row: 1; justify-self: stretch; justify-content: space-between; gap: 0; }
+    .ctrl-btn { width: 54px; height: 54px; font-size: 19px; }
+    .rewind-btn { font-size: 17px; }
+    .play-btn { width: 63px; height: 63px; font-size: 22px; }
+
+    main { padding: 10px; }
+    .row { padding: 10px 12px 10px 9px; gap: 10px; }
+
+    /* スマホは上に動画と今の文、下に文の一覧 */
+    body.has-video main { display: block; padding-top: 0; }
+    body.has-video .video-pane {
+      margin: 0 -10px 10px; border-radius: 0; border: none; border-bottom: 1px solid var(--panel-border); z-index: 4;
+    }
+    .video-pane video { max-height: 32vh; }
+    .caption { padding: 6px 12px 8px; }
+    .caption .cap-en { font-size: 14.5px; }
+    .caption .cap-ja { font-size: 12px; }
+  }
+
+  body.hide-ja .txt-ja, body.hide-ja .row .txt-ja { display: none !important; }   /* 動画のときの「英文の下に訳」より強く効かせる */
+
+  /* 1回分をまとめたmp3のときの、Part の見出し */
+  .part-head {
+    padding: 10px 20px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+    color: var(--accent); background: var(--paper); border-bottom: 1px solid var(--panel-border);
+  }
+  .part-head:not(:first-child) { border-top: 1px solid var(--panel-border); }
+
+  .copy-btn {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--ink-muted);
+    opacity: 0.4;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.12s ease, color 0.12s ease, opacity 0.12s ease;
+  }
+  .row:hover .copy-btn, .row.current .copy-btn { opacity: 0.7; }
+  .copy-btn:hover { opacity: 1; background: rgba(31,110,98,0.1); color: var(--accent); }
+  .copy-btn svg { width: 15px; height: 15px; pointer-events: none; }
+  .copy-btn.copied { opacity: 1; color: #fff; background: var(--accent); }
+
+  input[type="file"] { display: none; }
+
+  /* Settings modal */
+  .overlay {
+    display: none; position: fixed; inset: 0; background: rgba(34,32,27,0.35);
+    align-items: center; justify-content: center; z-index: 10;
+  }
+  .overlay.active { display: flex; }
+  .modal {
+    background: var(--paper); border-radius: 14px; padding: 24px 26px; width: 400px;
+    max-width: 92vw; max-height: 88vh; overflow-y: auto; border: 1px solid var(--panel-border);
+  }
+  .modal h2 { font-size: 18px; margin: 0; font-family: "Iowan Old Style", Palatino, serif; }
+  .modal .section-title {
+    font-size: 12px; font-weight: 600; color: var(--ink-muted); letter-spacing: 0.04em;
+    margin: 20px 0 6px;
+  }
+  .modal p.desc { font-size: 12px; color: var(--ink-muted); margin: -2px 0 8px; line-height: 1.5; }
+  .modal p.note { font-size: 12px; color: var(--ink-muted); margin: 8px 0 0; }
+  .setting-group {
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; padding: 0 14px;
+  }
+  .bind-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 9px 0; border-bottom: 1px solid var(--panel-border);
+  }
+  .bind-row:last-child { border-bottom: none; }
+  .setting-select {
+    padding: 6px 8px; border-radius: 7px; border: 1px solid var(--panel-border);
+    background: var(--paper); font-size: 13px; color: var(--ink); cursor: pointer;
+  }
+  .bind-row .label { font-size: 14px; }
+  .bind-row .key-btn {
+    min-width: 74px; text-align: center; padding: 6px 10px; border-radius: 7px;
+    border: 1px solid var(--panel-border); background: var(--paper); font-size: 13px; color: var(--ink); cursor: pointer;
+  }
+  .bind-row .key-btn.listening { background: var(--gold); color: var(--accent-ink); }
+  .sec-input {
+    width: 64px; text-align: center; padding: 6px 8px; border-radius: 7px;
+    border: 1px solid var(--panel-border); background: var(--paper); font-size: 13px; color: var(--ink);
+  }
+  .modal-close {
+    margin-top: 20px; width: 100%; padding: 10px; border-radius: 8px; border: none;
+    background: var(--accent); color: var(--accent-ink); font-size: 14px; cursor: pointer; font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<div class="top-sticky">
+  <header>
+    <h1 class="brand">
+      <svg class="brand-mark" width="20" height="16" viewBox="0 0 20 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="0" y="6" width="3" height="4" rx="1.5" fill="currentColor"/>
+        <rect x="5" y="2" width="3" height="12" rx="1.5" fill="currentColor"/>
+        <rect x="10" y="4" width="3" height="8" rx="1.5" fill="currentColor"/>
+        <rect x="15" y="0" width="3" height="16" rx="1.5" fill="currentColor"/>
+      </svg>
+      <span class="brand-main">Listening</span><span class="brand-sub">Player</span>
+    </h1>
+    <div class="header-actions">
+      <div class="load-bar" id="loadBar" style="display:none;">
+        <span id="folderLabel"></span>
+        <button class="chip" id="reloadBtn"><span class="pc-only">別の教材を</span>読み込む</button>
+      </div>
+      <button class="chip" id="settingsBtn">設定</button>
+    </div>
+  </header>
+</div>
+
+<main>
+  <div class="empty-state" id="emptyState">
+    <p>教材を選んでください。<br>「〜_リスニング.mp3」「〜_リスニング_480p.mp4」などは、そのファイル1つを「ファイルを選ぶ」から選びます。<br>1文ずつの音声（0001.mp3 ...）のフォルダや、音声1本と「区切り時刻.txt」のフォルダも使えます。</p>
+    <button class="big-btn" id="pickFilesBtn">ファイルを選ぶ</button>
+    <p style="margin-top:14px;">
+      <button class="big-btn secondary" id="pickFolderBtn">フォルダを選ぶ</button>
+    </p>
+  </div>
+
+  <!-- 音声も動画も、この1つの video で再生する（音声のときは枠ごと隠す）。playsinline は iPhone で全画面にしないため -->
+  <div class="video-pane" id="videoPane">
+    <video id="audioEl" playsinline></video>
+    <!-- 全体の中のどこを再生しているかのバー。つまんで動かすと、その場所へ移る -->
+    <div class="seek-row">
+      <input type="range" id="seekBar" min="0" max="0" step="0.1" value="0" aria-label="再生位置">
+      <span class="seek-time" id="seekTime">0:00 / 0:00</span>
+    </div>
+    <div class="caption">
+      <div class="cap-en" id="capEn"></div><div class="cap-ja" id="capJa"></div>
+      <button type="button" class="full-btn" id="fullBtn" title="大きく表示" aria-label="動画を大きく表示">
+        <svg class="icon-expand" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg>
+        <svg class="icon-shrink" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="list-pane" id="listPane"></div>
+</main>
+
+<div class="player-bar" id="playerBar" style="display:none;">
+  <div class="now">
+    <span class="position"><span class="status-dot" id="statusDot"></span><span id="positionLabel">- / -</span></span>
+  </div>
+  <div class="controls">
+    <button class="ctrl-btn" id="prevBtn" title="前へ">◀</button>
+    <button class="ctrl-btn rewind-btn" id="rewindBtn" title="巻き戻し">↺2</button>
+    <button class="play-btn" id="playBtn" title="もう一度再生">▶</button>
+    <button class="ctrl-btn" id="pauseBtn" title="一時停止 / 再開">⏸&#xFE0E;</button>
+    <button class="ctrl-btn" id="nextBtn" title="次へ">▶</button>
+  </div>
+  <div class="speed-row">
+    速度
+    <button id="speedDown">−</button>
+    <span class="speed-val" id="speedVal">1.00x</span>
+    <button id="speedUp">+</button>
+  </div>
+</div>
+
+<input type="file" id="folderInput" webkitdirectory directory multiple>
+<input type="file" id="filesInput" multiple accept="audio/*,video/mp4,.mp3,.m4a,.wav,.mp4,.m4v,.txt,text/plain">
+
+<div class="overlay" id="settingsOverlay">
+  <div class="modal" role="dialog" aria-labelledby="settingsTitle">
+    <h2 id="settingsTitle">設定</h2>
+
+    <h3 class="section-title">表示・再生</h3>
+    <div class="setting-group">
+      <div class="bind-row">
+        <span class="label">デザイン</span>
+        <select id="themeSelect" class="setting-select">
+          <option value="light">明るい背景</option>
+          <option value="dark">黒い背景・白い文字</option>
+        </select>
+      </div>
+      <div class="bind-row">
+        <span class="label">日本語訳</span>
+        <select id="jaSelect" class="setting-select">
+          <option value="show">表示する</option>
+          <option value="hide">隠す</option>
+        </select>
+      </div>
+      <div class="bind-row">
+        <span class="label">再生モード</span>
+        <select id="modeSelect" class="setting-select">
+          <option value="stop">1文ずつ止める</option>
+          <option value="continuous">連続再生</option>
+        </select>
+      </div>
+      <div class="bind-row">
+        <span class="label">再生速度</span>
+        <span class="speed-set">
+          <button type="button" id="speedDown2" aria-label="遅く">−</button>
+          <span class="speed-val" id="speedVal2">1.00x</span>
+          <button type="button" id="speedUp2" aria-label="速く">+</button>
+        </span>
+      </div>
+      <div class="bind-row">
+        <span class="label">巻き戻す秒数</span>
+        <span class="label"><input type="number" id="rewindSecInput" min="1" max="30" step="1" class="sec-input"> 秒</span>
+      </div>
+    </div>
+
+    <div class="pc-only">
+      <h3 class="section-title">キー操作</h3>
+      <p class="desc">変えたいときは、右のボタンを押してから新しいキーを押してください。</p>
+      <div class="setting-group" id="bindRows"></div>
+      <p class="note">文をクリックすると、その文を再生します。</p>
+    </div>
+
+    <button class="modal-close" id="closeSettings">閉じる</button>
+  </div>
+</div>
+
+<script>
+  const AUDIO_EXT = ['.mp3', '.wav', '.m4a', '.ogg', '.opus', '.mp4', '.m4v'];   // 動画（mp4）も同じ扱い
+  const VIDEO_EXT = ['.mp4', '.m4v'];
+  const STORAGE_KEY = 'shadowPlayerSettings_v2';
+
+  const ACTIONS = [
+    { id: 'replay',   label: '同じファイルを再生' },
+    { id: 'pause',    label: '一時停止 / 再開' },
+    { id: 'rewind',   label: '巻き戻し' },
+    { id: 'next',     label: '次のファイルを再生' },
+    { id: 'prev',     label: '前のファイルを再生' },
+    { id: 'toggleJa', label: '日本語訳の表示切替' },
+  ];
+  // 'Comma' は「, <」のキー（Shiftの有無は問わない）
+  const DEFAULT_BINDINGS = { replay: 'Enter', pause: 'Space', rewind: 'Comma', next: 'ArrowRight', prev: 'ArrowLeft', toggleJa: 'KeyJ' };
+  const DEFAULT_REWIND_SEC = 2;
+
+  function loadSettings() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        parsed.bindings = { ...DEFAULT_BINDINGS, ...(parsed.bindings || {}) };
+        if (parsed.showJa === undefined) parsed.showJa = true;
+        if (!parsed.theme) parsed.theme = 'light';
+        if (!parsed.rewindSec) parsed.rewindSec = DEFAULT_REWIND_SEC;
+        return parsed;
+      }
+    } catch (e) {}
+    return { bindings: { ...DEFAULT_BINDINGS }, speed: 1.0, mode: 'stop', showJa: true, rewindSec: DEFAULT_REWIND_SEC, theme: 'light' };
+  }
+  function saveSettings() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch (e) {}
+  }
+
+  let settings = loadSettings();
+  let items = [];
+  let currentIndex = -1;
+  let listeningFor = null;
+
+  const audioEl = document.getElementById('audioEl');
+  const emptyState = document.getElementById('emptyState');
+  const listPane = document.getElementById('listPane');
+  const playerBar = document.getElementById('playerBar');
+  const positionLabel = document.getElementById('positionLabel');
+  const statusDot = document.getElementById('statusDot');
+  const loadBar = document.getElementById('loadBar');
+  const folderLabel = document.getElementById('folderLabel');
+  const speedVal = document.getElementById('speedVal');
+  const videoPane = document.getElementById('videoPane');
+  const capEn = document.getElementById('capEn');
+  const capJa = document.getElementById('capJa');
+  // 動画をタップ（クリック）すると一時停止・再開
+  audioEl.addEventListener('click', () => actionPause());
+  // 字幕の右端のボタン：動画と今の文をブラウザいっぱいに表示する／元に戻す
+  function setVideoFull(on) {
+    document.body.classList.toggle('video-full', on);
+    const btn = document.getElementById('fullBtn');
+    btn.title = on ? '元の大きさに戻す（Esc）' : '大きく表示';
+    btn.setAttribute('aria-label', btn.title);
+    updateLayoutOffsets();
+  }
+  document.getElementById('fullBtn').addEventListener('click', () =>
+    setVideoFull(!document.body.classList.contains('video-full')));
+
+  audioEl.playbackRate = settings.speed || 1.0;
+  speedVal.textContent = audioEl.playbackRate.toFixed(2) + 'x';
+
+  const modeSelect = document.getElementById('modeSelect');
+  modeSelect.value = settings.mode || 'stop';
+  modeSelect.addEventListener('change', () => {
+    settings.mode = modeSelect.value;
+    watchEnd();     // 再生中に切り替えても、すぐ新しい再生のしかたに
+    saveSettings();
+  });
+
+  const themeSelect = document.getElementById('themeSelect');
+  function applyTheme() {
+    document.documentElement.classList.toggle('theme-dark', settings.theme === 'dark');
+    themeSelect.value = settings.theme === 'dark' ? 'dark' : 'light';
+  }
+  applyTheme();
+  themeSelect.addEventListener('change', () => {
+    settings.theme = themeSelect.value;
+    saveSettings();
+    applyTheme();
+  });
+
+  const jaSelect = document.getElementById('jaSelect');
+  function applyJaVisibility() {
+    document.body.classList.toggle('hide-ja', !settings.showJa);
+    jaSelect.value = settings.showJa ? 'show' : 'hide';
+  }
+  function actionToggleJa() {
+    settings.showJa = !settings.showJa;
+    saveSettings();
+    applyJaVisibility();
+  }
+  applyJaVisibility();
+  jaSelect.addEventListener('change', () => {
+    settings.showJa = jaSelect.value === 'show';
+    saveSettings();
+    applyJaVisibility();
+  });
+
+  document.getElementById('pickFolderBtn').addEventListener('click', () => document.getElementById('folderInput').click());
+  document.getElementById('pickFilesBtn').addEventListener('click', () => document.getElementById('filesInput').click());
+  document.getElementById('reloadBtn').addEventListener('click', () => document.getElementById('filesInput').click());
+  document.getElementById('folderInput').addEventListener('change', (e) => handleFiles(e.target.files));
+  document.getElementById('filesInput').addEventListener('change', (e) => handleFiles(e.target.files));
+
+  function readText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsText(file, 'utf-8');
+    });
+  }
+
+  // 区切り時刻.txt を読む。1行目の「# 元の音声.mp3」と、「番号<TAB>開始秒<TAB>終了秒」の行
+  function parseTimes(text) {
+    let source = '';
+    const rows = [];
+    text.split('\n').forEach(line => {
+      line = line.replace(/\r$/, '');
+      if (!line.trim()) return;
+      if (line.startsWith('#')) {
+        const m = line.match(/^#\s*(.+\.(mp3|wav|m4a|ogg|opus))\s*$/i);
+        if (m && !source) source = m[1].normalize('NFC');
+        return;
+      }
+      const parts = line.split('\t');
+      const start = parseFloat(parts[1]), end = parseFloat(parts[2]);
+      if (parts.length >= 3 && isFinite(start) && isFinite(end) && end > start) {
+        rows.push({ name: parts[0].trim(), start, end });
+      }
+    });
+    return { source, rows };
+  }
+
+  // 「〜_リスニング_480p.mp4」など：mp4 の情報欄（moov/udta/meta/ilst の ©cmt＝コメント）に、
+  // mp3 と同じ形の JSON が入っている（_tools/make_video.py が書く）
+  async function readMp4Bundle(file) {
+    try {
+      let off = 0;
+      while (off + 8 <= file.size) {
+        const h = new DataView(await file.slice(off, off + 16).arrayBuffer());
+        let size = h.getUint32(0), hdr = 8;
+        const type = String.fromCharCode(h.getUint8(4), h.getUint8(5), h.getUint8(6), h.getUint8(7));
+        if (size === 1) { size = Number(h.getBigUint64(8)); hdr = 16; }
+        else if (size === 0) size = file.size - off;
+        if (size < hdr) return null;
+        if (type === 'moov') {
+          const b = new Uint8Array(await file.slice(off + hdr, off + size).arrayBuffer());
+          const txt = findMp4Comment(b, 0, b.length);
+          const data = txt ? JSON.parse(txt) : null;
+          return data && Array.isArray(data.parts) ? data : null;
+        }
+        off += size;    // 映像の本体（mdat）などは読まずに飛ばす
+      }
+    } catch (e) {}
+    return null;
+  }
+  function findMp4Comment(b, start, end) {
+    const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+    let off = start;
+    while (off + 8 <= end) {
+      let size = dv.getUint32(off), hdr = 8;
+      const type = String.fromCharCode(b[off + 4], b[off + 5], b[off + 6], b[off + 7]);
+      if (size === 1) { size = Number(dv.getBigUint64(off + 8)); hdr = 16; }
+      else if (size === 0) size = end - off;
+      if (size < hdr || off + size > end) return null;
+      let found = null;
+      if (type === 'udta' || type === 'ilst') found = findMp4Comment(b, off + hdr, off + size);
+      else if (type === 'meta') {
+        // meta はふつう4バイトの版・フラグから始まる（無い書き方もある）
+        const s = off + hdr + (dv.getUint32(off + hdr) === 0 ? 4 : 0);
+        found = findMp4Comment(b, s, off + size);
+      } else if (type === '©cmt') {
+        const d = off + hdr;                       // 中の data 箱：大きさ・"data"・種類・言語のあとが本文
+        const txt = new TextDecoder('utf-8').decode(b.subarray(d + 16, d + dv.getUint32(d)));
+        if (txt.includes('"shadowing/1"')) found = txt;
+      }
+      if (found) return found;
+      off += size;
+    }
+    return null;
+  }
+
+  // 「〜_リスニング.mp3」：mp3のタグ（TXXX "shadowing"）に英文・訳・時刻が JSON で入っている
+  async function readBundle(file) {
+    if (VIDEO_EXT.some(ext => file.name.toLowerCase().endsWith(ext))) return readMp4Bundle(file);
+    try {
+      const h = new Uint8Array(await file.slice(0, 10).arrayBuffer());
+      if (h[0] !== 0x49 || h[1] !== 0x44 || h[2] !== 0x33) return null;   // "ID3"
+      const ver = h[3];
+      const ss = (b, i) => (b[i] << 21) | (b[i + 1] << 14) | (b[i + 2] << 7) | b[i + 3];
+      const size = ss(h, 6);
+      const tag = new Uint8Array(await file.slice(10, 10 + size).arrayBuffer());
+      const dec = new TextDecoder('utf-8');
+      let i = 0;
+      while (i + 10 <= tag.length && tag[i] !== 0) {
+        const id = String.fromCharCode(tag[i], tag[i + 1], tag[i + 2], tag[i + 3]);
+        const fs = ver === 4 ? ss(tag, i + 4) : ((tag[i + 4] << 24) | (tag[i + 5] << 16) | (tag[i + 6] << 8) | tag[i + 7]);
+        const body = tag.subarray(i + 10, i + 10 + fs);
+        if (id === 'TXXX' && body[0] === 3) {
+          const z = body.indexOf(0, 1);
+          if (dec.decode(body.subarray(1, z)) === 'shadowing') {
+            const data = JSON.parse(dec.decode(body.subarray(z + 1)).replace(/\0+$/, ''));
+            if (data && Array.isArray(data.parts)) return data;
+          }
+        }
+        i += 10 + fs;
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  async function handleFiles(fileList) {
+    const files = Array.from(fileList);
+    const nameOf = f => f.name.normalize('NFC');
+    const audioFiles = files.filter(f => AUDIO_EXT.some(ext => f.name.toLowerCase().endsWith(ext)));
+    if (audioFiles.length === 0) { alert('音声・動画ファイル（mp3・mp4など）が見つかりませんでした。'); return; }
+    audioFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    const sentencesFile = files.find(f => f.name.toLowerCase() === 'sentences.txt');
+    const timesFile = files.find(f => nameOf(f) === '区切り時刻.txt');
+
+    // 「音声1本＋区切り時刻.txt」なら、1本の音声の中を時刻で区切って再生する
+    let timed = null;
+    for (const f of audioFiles) {
+      const data = await readBundle(f);
+      if (data) {
+        const rows = [];
+        data.parts.forEach(p => p.rows.forEach((r, k) => rows.push({
+          name: String(k + 1), num: k + 1, part: p.title, start: r[0], end: r[1], text: r[2], ja: r[3] || '',
+        })));
+        if (rows.length) { timed = { file: f, rows, title: data.title, bundle: true }; break; }
+      }
+    }
+    if (!timed && timesFile) {
+      const t = parseTimes(await readText(timesFile));
+      const src = audioFiles.find(f => nameOf(f) === t.source)
+        || (audioFiles.length === 1 && !/^\d+\.[^.]+$/.test(audioFiles[0].name) ? audioFiles[0] : null);
+      if (src && t.rows.length) timed = { file: src, rows: t.rows };
+    }
+
+    stopWatch();
+    if (timeline) URL.revokeObjectURL(timeline.url);
+    items.forEach(it => { if (it.url && !timeline) URL.revokeObjectURL(it.url); });
+    // 動画の教材なら、上に動画と今の文を出す
+    const isVideo = !!timed && VIDEO_EXT.some(ext => timed.file.name.toLowerCase().endsWith(ext));
+    videoPane.classList.toggle('active', isVideo);
+    if (!isVideo) setVideoFull(false);
+    document.body.classList.toggle('has-video', isVideo);
+    if (timed) {
+      timeline = { url: URL.createObjectURL(timed.file) };
+      items = timed.rows.map(r => ({ text: '', ja: '', ...r }));
+      audioEl.src = timeline.url;
+      audioEl.load();
+      audioEl.playbackRate = settings.speed || 1.0;
+    } else {
+      timeline = null;
+      items = audioFiles.map(f => ({ name: f.name, file: f, url: URL.createObjectURL(f), text: '', ja: '' }));
+    }
+    currentIndex = -1;
+
+    const buildList = () => {
+      renderList();
+      const folderName = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/')[0]
+        : (timeline ? (timed.title || nameOf(timed.file)) : `${items.length}個のファイル`);
+      folderLabel.textContent = folderName;
+      loadBar.style.display = 'flex';
+      playerBar.style.display = 'grid';
+      emptyState.style.display = 'none';
+      listPane.classList.add('active');
+      updateLayoutOffsets();
+      selectIndex(0, { autoplay: false });
+    };
+
+    if (sentencesFile && !(timed && timed.bundle)) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const map = {};
+        reader.result.split('\n').forEach(line => {
+          line = line.replace(/\r$/, '');
+          if (!line.trim()) return;
+          const parts = line.split('\t');
+          if (parts.length < 2) return;
+          // 1列目=ファイル番号、2列目=英文、3列目以降=日本語訳
+          map[parts[0].trim()] = {
+            en: parts[1].trim(),
+            ja: parts.length > 2 ? parts.slice(2).join('\t').trim() : '',
+          };
+        });
+        items.forEach(it => {
+          const key = timeline ? it.name : it.name.replace(/\.[^.]+$/, '');
+          if (map[key]) { it.text = map[key].en; it.ja = map[key].ja; }
+        });
+        buildList();
+      };
+      reader.readAsText(sentencesFile, 'utf-8');
+    } else {
+      buildList();
+    }
+  }
+
+  // 上のバーと下の操作ボタンの高さぶん余白を取り、文がその裏に隠れないようにする
+  const topSticky = document.querySelector('.top-sticky');
+  const mainEl = document.querySelector('main');
+  function updateLayoutOffsets() {
+    const barH = playerBar.style.display === 'none' ? 0 : playerBar.offsetHeight;
+    mainEl.style.paddingBottom = `${barH + 24}px`;
+    document.documentElement.style.setProperty('--bar-h', `${barH}px`);
+    // 動画は上のバーのすぐ下に貼りつける（パソコンは少しすき間をあける）
+    const narrow = window.matchMedia('(max-width: 720px)').matches;
+    // 大きく表示しているときは、画面のいちばん上から
+    videoPane.style.top = document.body.classList.contains('video-full') ? '0px'
+      : `${topSticky.offsetHeight + (narrow ? 0 : 16)}px`;
+  }
+  window.addEventListener('resize', updateLayoutOffsets);
+
+  function scrollRowIntoView(rowEl) {
+    const margin = 8;
+    const r = rowEl.getBoundingClientRect();
+    // スマホで動画を出しているときは、動画の下からが一覧の見える範囲
+    const narrow = window.matchMedia('(max-width: 720px)').matches;
+    const cover = narrow && document.body.classList.contains('has-video') ? videoPane : topSticky;
+    const visibleTop = cover.getBoundingClientRect().bottom + margin;
+    const visibleBottom = playerBar.getBoundingClientRect().top - margin;
+    if (r.top < visibleTop) window.scrollBy(0, r.top - visibleTop);
+    else if (r.bottom > visibleBottom) window.scrollBy(0, r.bottom - visibleBottom);
+  }
+
+  function esc(s) {
+    return String(s || '').replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  }
+
+  function renderList() {
+    listPane.innerHTML = '';
+    items.forEach((it, i) => {
+      if (it.part && (i === 0 || items[i - 1].part !== it.part)) {
+        const h = document.createElement('div');
+        h.className = 'part-head';
+        h.textContent = it.part;
+        listPane.appendChild(h);
+      }
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.tabIndex = 0;
+      row.dataset.index = i;
+      const jaHtml = it.ja ? `<span class="txt-ja">${esc(it.ja)}</span>` : '';
+      row.innerHTML =
+        `<span class="num">${it.num || i + 1}</span>` +
+        `<span class="txt">` +
+          `<span class="en-group">` +
+            `<span class="txt-en">${esc(it.text || it.name)}</span>` +
+            `<button type="button" class="copy-btn" title="英文をコピー" aria-label="英文をコピー">` +
+              `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">` +
+                `<rect x="7" y="7" width="10" height="10" rx="2"/>` +
+                `<path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>` +
+              `</svg>` +
+            `</button>` +
+          `</span>` +
+          jaHtml +
+        `</span>`;
+      row.addEventListener('click', () => selectIndex(i, { autoplay: true }));
+
+      const copyBtn = row.querySelector('.copy-btn');
+      copyBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // 行のクリック（再生）を発火させない
+        const textToCopy = it.text || it.name;
+        const showCopied = () => {
+          copyBtn.classList.add('copied');
+          setTimeout(() => copyBtn.classList.remove('copied'), 1000);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(textToCopy).then(showCopied).catch(() => {
+            fallbackCopy(textToCopy);
+            showCopied();
+          });
+        } else {
+          fallbackCopy(textToCopy);
+          showCopied();
+        }
+      });
+
+      listPane.appendChild(row);
+    });
+  }
+
+  function fallbackCopy(text) {
+    // navigator.clipboard が使えない環境（file:// で開いた場合など）向けの代替手段
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  function whenReady(fn) {
+    if (audioEl.readyState >= 1) fn();
+    else audioEl.addEventListener('loadedmetadata', fn, { once: true });
+  }
+
+  // ---- 音声1本＋時刻表のとき：文の終わりの時刻で止める ----
+  let timeline = null;   // { url }（フォルダ方式のときは null）
+  let rafId = null, stopTimer = null;
+  function stopWatch() {
+    if (rafId) cancelAnimationFrame(rafId);
+    if (stopTimer) clearTimeout(stopTimer);
+    rafId = stopTimer = null;
+  }
+  function watchEnd() {
+    stopWatch();
+    if (!timeline || currentIndex < 0 || audioEl.paused) return;
+    if ((settings.mode || 'stop') === 'continuous') { followPlayback(); return; }
+    let end = stopAt(currentIndex);
+    const check = () => {
+      if (audioEl.paused) { stopWatch(); return true; }
+      end = stopAt(currentIndex);                 // 遅れを測り直したら、止める時刻もその場で変える
+      if (audioEl.currentTime >= end) { onSegmentEnd(); return true; }
+      return false;
+    };
+    // 画面の書き換えごとに確かめる（細かく止められる）
+    const tick = () => { if (!check()) rafId = requestAnimationFrame(tick); };
+    rafId = requestAnimationFrame(tick);
+    // 別のタブを見ているときなどは上が止まるので、タイマーでも確かめる
+    const arm = () => {
+      const ms = (end - audioEl.currentTime) / (audioEl.playbackRate || 1) * 1000;
+      stopTimer = setTimeout(() => { if (!check()) arm(); }, Math.max(10, ms));
+    };
+    arm();
+  }
+  // 連続再生：映画（音声）は止めず・飛ばさずにそのまま流し、時刻が次の文に来たら今の文（字幕・一覧）だけを切り替える。
+  // 文と文の間も、最後の文のあと（エンドロール）も途切れずに見られる
+  function followPlayback() {
+    const tick = () => {
+      if (audioEl.paused) { stopWatch(); return; }
+      const t = audioEl.currentTime;
+      let i = currentIndex;
+      while (i + 1 < items.length && t >= items[i + 1].start) i++;
+      if (i !== currentIndex) showIndex(i);
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    // 別のタブを見ているときなどは上が止まるので、タイマーでも
+    const arm = () => {
+      stopTimer = setTimeout(() => {
+        if (audioEl.paused) return;
+        const t = audioEl.currentTime;
+        let i = currentIndex;
+        while (i + 1 < items.length && t >= items[i + 1].start) i++;
+        if (i !== currentIndex) showIndex(i);
+        arm();
+      }, 250);
+    };
+    arm();
+  }
+  // 止める合図から実際に音が止まるまでの遅れ（スピーカー・Bluetooth のイヤホンなどの出力の遅れ）。ブラウザが知っている値を使う。
+  // 次の文がすぐ続く所でこの遅れの分だけ遅く止まると、次の文の頭が聞こえる（ユーザー指摘：BTTF「次の文の最初の単語がまるまる読まれる」）
+  let outLatency = 0;
+  // 2026-10-06：遅れは最初の1回だけでなく、再生のたびと音の出し先が変わったときに測り直す。
+  //   1回だけだと、Bluetooth スピーカーで測った長い遅れのままパソコンのスピーカーに戻し、語尾まで早めに止めて削れた
+  //   （ユーザー指摘：X-Files S01E02「102行くらいから5文に1文くらい文の終わりが欠ける」）。
+  // また、開いている間は聞こえない無音を流し続ける。Bluetooth スピーカーは音が途切れると休み、次の文の頭の音を落とした
+  let actx = null;
+  function openAudio() {
+    try {
+      const C = window.AudioContext || window.webkitAudioContext;
+      if (!C) return;
+      if (actx) { try { actx.close(); } catch (e) {} }
+      actx = new C();
+      const o = actx.createOscillator(), g = actx.createGain();
+      g.gain.value = 0;                                  // 無音（出力の流れを保つだけ）
+      o.connect(g); g.connect(actx.destination); o.start();
+      actx.resume().then(() => setTimeout(readLatency, 300)).catch(() => {});
+    } catch (e) { actx = null; }
+  }
+  function readLatency() {
+    if (!actx) return;
+    outLatency = Math.min(0.5, Math.max(0, (actx.outputLatency || 0) + (actx.baseLatency || 0)));
+  }
+  let actxBorn = 0;
+  function measureLatency() {
+    // 音の出し先が変わったことをブラウザが知らせないこともあるので、20秒より古い測り方は作り直して測る
+    if (!actx || actx.state === 'closed' || Date.now() - actxBorn > 20000) { actxBorn = Date.now(); openAudio(); return; }
+    actx.resume().catch(() => {});
+    readLatency();
+  }
+  document.addEventListener('pointerdown', measureLatency);   // 音の出力はユーザーの操作のあとでないと始められない
+  document.addEventListener('keydown', measureLatency);
+  try { navigator.mediaDevices.addEventListener('devicechange', () => { if (actx) { actxBorn = Date.now(); openAudio(); } }); } catch (e) {}
+  // 文を止める時刻：次の文がすぐ続く（すき間が出力の遅れより短い）ときだけ、遅れの分だけ早める（文の長さの半分までに）
+  window.shadowOutLatency = () => outLatency;      // 確かめ用
+  function stopAt(i) {
+    const it = items[i], nx = items[i + 1];
+    if (!nx || !outLatency) return it.end;
+    const room = nx.start - it.end;
+    if (room >= outLatency) return it.end;
+    return Math.max(it.start + (it.end - it.start) / 2, it.end - (outLatency - room));
+  }
+  function onSegmentEnd() {
+    stopWatch();
+    // 連続再生なら止めずに次の文へ飛ぶ（スマホで再生が止まらないように）
+    if ((settings.mode || 'stop') === 'continuous' && currentIndex + 1 < items.length) { actionNext(); return; }
+    audioEl.pause();
+  }
+  // 再生する。失敗したら（ブラウザから離れて戻ったあとなど）動画を読み込み直して、同じ位置から再生し直す
+  function safePlay() {
+    measureLatency();                                     // 音の出し先が変わっていても、今の遅れで止める
+    const p = audioEl.play();
+    if (p && p.catch) p.catch(err => {
+      if (err && err.name === 'AbortError') return;          // 別の操作で取り消されただけ
+      reloadAt(audioEl.currentTime, true);
+    });
+  }
+  let lastReload = 0;
+  function reloadAt(t, play) {
+    if (!timeline || Date.now() - lastReload < 5000) return;     // 読み込み直しは5秒に1回まで（壊れた動画でくり返さない）
+    lastReload = Date.now();
+    const rate = audioEl.playbackRate;
+    audioEl.src = timeline.url;
+    audioEl.load();
+    audioEl.addEventListener('loadedmetadata', () => {
+      audioEl.currentTime = t;
+      audioEl.playbackRate = rate;
+      if (play) audioEl.play().catch(() => {});
+    }, { once: true });
+  }
+  // ブラウザのタブが見えなくなると、ブラウザは映像の処理を止める（声だけ進む）。戻ってきたら今の位置へ移り直して、
+  // 映像と声をそろえ直す（ユーザー：別のアプリを見て戻ると、声と別の場面が映る・再生できなくなる）
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || !timeline || currentIndex < 0) return;
+    const t = audioEl.currentTime;
+    if (audioEl.error) { reloadAt(t, !audioEl.paused); return; }
+    audioEl.currentTime = Math.max(0, t - 0.01);      // 同じ位置を入れてもブラウザは何もしないので、ほんの少し前へ移す
+  });
+  // 動画の読み込みが壊れたら（長く離れていたときなど）、同じ位置から読み込み直す
+  audioEl.addEventListener('error', () => { if (timeline) reloadAt(audioEl.currentTime || 0, false); });
+  function playFrom(t) {
+    whenReady(() => {
+      audioEl.currentTime = t;
+      safePlay();
+    });
+  }
+  audioEl.addEventListener('play', watchEnd);
+  audioEl.addEventListener('seeked', watchEnd);
+  audioEl.addEventListener('ratechange', watchEnd);
+
+  function selectIndex(i, { autoplay }) {
+    if (i < 0 || i >= items.length) return;
+    showIndex(i);
+    const it = items[i];
+    if (timeline) {
+      stopWatch();
+      if (autoplay) playFrom(it.start);
+      else { audioEl.pause(); whenReady(() => { audioEl.currentTime = it.start; }); }
+      return;
+    }
+    audioEl.src = it.url;
+    audioEl.load();
+    audioEl.playbackRate = settings.speed || 1.0;
+    if (autoplay) {
+      audioEl.currentTime = 0;
+      const playIt = () => audioEl.play();
+      if (audioEl.readyState >= 1) playIt();
+      else audioEl.addEventListener('loadedmetadata', playIt, { once: true });
+    }
+  }
+  // 今の文を i にする（一覧の色・動画の下の字幕・位置の表示）。再生の位置は変えない
+  function showIndex(i) {
+    currentIndex = i;
+    const it = items[i];
+    document.querySelectorAll('.row').forEach(r => r.classList.remove('current'));
+    const rowEl = listPane.querySelector(`.row[data-index="${i}"]`);
+    if (rowEl) { rowEl.classList.add('current'); scrollRowIntoView(rowEl); }
+    capEn.textContent = it.text || '';
+    capJa.textContent = it.ja || '';
+    positionLabel.textContent = it.part
+      ? `${it.part.replace('Part ', 'P')} · ${it.num} / ${items.filter(x => x.part === it.part).length}`
+      : `${i + 1} / ${items.length}`;
+  }
+
+  // ---- 再生位置のバー（動画のとき） ----
+  const seekBar = document.getElementById('seekBar');
+  const seekTime = document.getElementById('seekTime');
+  let seeking = false;
+  function clock(t) {
+    t = Math.max(0, Math.floor(t || 0));
+    const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), sec = String(t % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+  }
+  function showSeek(t) {
+    const d = audioEl.duration || 0;
+    seekTime.textContent = `${clock(t)} / ${clock(d)}`;
+  }
+  function updateSeek() {
+    if (seeking) return;
+    seekBar.max = audioEl.duration || 0;
+    seekBar.value = audioEl.currentTime || 0;
+    showSeek(audioEl.currentTime);
+  }
+  audioEl.addEventListener('loadedmetadata', updateSeek);
+  audioEl.addEventListener('timeupdate', updateSeek);
+  audioEl.addEventListener('seeked', updateSeek);
+  // つまんで動かしている間は時刻だけ変え、放したらその場所へ
+  seekBar.addEventListener('input', () => { seeking = true; showSeek(+seekBar.value); });
+  seekBar.addEventListener('change', () => {
+    seeking = false;
+    seekTo(+seekBar.value);
+    seekBar.blur();     // バーを触った後も、キー（Enter・矢印など）がすぐ効くように
+  });
+  function seekTo(t) {
+    if (!timeline || !items.length) return;
+    // その時刻の文（文と文の間なら次の文）を今の文にする。再生中ならそのまま続け、文の終わりの止め方はいつもどおり
+    let i = items.findIndex(it => t < it.end);
+    if (i < 0) i = items.length - 1;
+    const wasPlaying = !audioEl.paused;
+    stopWatch();
+    showIndex(i);
+    audioEl.currentTime = t;
+    if (wasPlaying) safePlay();
+  }
+
+  function actionReplay() {
+    if (currentIndex === -1) { selectIndex(0, { autoplay: true }); return; }
+    const it = items[currentIndex];
+    if (timeline) { playFrom(it.start); return; }
+    audioEl.src = it.url;
+    audioEl.load();
+    const playIt = () => { audioEl.currentTime = 0; audioEl.play(); };
+    if (audioEl.readyState >= 1) playIt();
+    else audioEl.addEventListener('loadedmetadata', playIt, { once: true });
+  }
+  function actionPause() {
+    if (currentIndex === -1) return;
+    if (timeline && audioEl.paused) {
+      // 文の終わりまで再生し終えていたら、その文の最初から
+      const it = items[currentIndex];
+      if (audioEl.currentTime >= stopAt(currentIndex) - 0.02 || audioEl.currentTime < it.start - 0.5) { playFrom(it.start); return; }
+    }
+    if (audioEl.paused) safePlay(); else audioEl.pause();
+  }
+  function actionRewind() {
+    if (currentIndex === -1) return;
+    const floor = timeline ? items[currentIndex].start : 0;
+    audioEl.currentTime = Math.max(floor, audioEl.currentTime - settings.rewindSec);
+    // 文の再生が終わった後でも、押せば最後の数秒をもう一度聞ける
+    if (audioEl.paused) safePlay();
+  }
+  function actionNext() { selectIndex(currentIndex + 1, { autoplay: true }); }
+  function actionPrev() { selectIndex(currentIndex - 1, { autoplay: true }); }
+
+  const rewindBtn = document.getElementById('rewindBtn');
+  const rewindSecInput = document.getElementById('rewindSecInput');
+  function applyRewindSec() {
+    rewindBtn.textContent = `↺${settings.rewindSec}`;
+    rewindBtn.title = `${settings.rewindSec}秒巻き戻し`;
+    rewindSecInput.value = settings.rewindSec;
+  }
+  rewindSecInput.addEventListener('change', () => {
+    const v = Math.round(Number(rewindSecInput.value));
+    if (v >= 1 && v <= 30) settings.rewindSec = v;
+    saveSettings();
+    applyRewindSec();
+    renderBindRows();
+  });
+  applyRewindSec();
+  rewindBtn.addEventListener('click', actionRewind);
+
+  document.getElementById('playBtn').addEventListener('click', actionReplay);
+  document.getElementById('pauseBtn').addEventListener('click', actionPause);
+  document.getElementById('nextBtn').addEventListener('click', actionNext);
+  document.getElementById('prevBtn').addEventListener('click', actionPrev);
+
+  document.getElementById('speedUp').addEventListener('click', () => setSpeed((settings.speed || 1) + 0.05));
+  document.getElementById('speedDown').addEventListener('click', () => setSpeed((settings.speed || 1) - 0.05));
+  document.getElementById('speedUp2').addEventListener('click', () => setSpeed((settings.speed || 1) + 0.05));
+  document.getElementById('speedDown2').addEventListener('click', () => setSpeed((settings.speed || 1) - 0.05));
+  const speedVal2 = document.getElementById('speedVal2');
+  speedVal2.textContent = speedVal.textContent;
+  function setSpeed(v) {
+    v = Math.max(0.5, Math.min(2.0, Math.round(v * 100) / 100));
+    settings.speed = v;
+    audioEl.playbackRate = v;
+    speedVal.textContent = speedVal2.textContent = v.toFixed(2) + 'x';
+    saveSettings();
+  }
+
+  audioEl.addEventListener('play', () => statusDot.classList.add('playing'));
+  audioEl.addEventListener('pause', () => statusDot.classList.remove('playing'));
+  audioEl.addEventListener('ended', () => {
+    stopWatch();
+    statusDot.classList.remove('playing');
+    if ((settings.mode || 'stop') === 'continuous') {
+      actionNext();
+    }
+  });
+
+  const ACTION_FN = { replay: actionReplay, pause: actionPause, rewind: actionRewind, next: actionNext, prev: actionPrev, toggleJa: actionToggleJa };
+
+  function actionLabel(a) {
+    return a.id === 'rewind' ? `${settings.rewindSec}秒巻き戻し` : a.label;
+  }
+
+  const MODIFIER_CODES = ['ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight', 'CapsLock'];
+
+  function codeToLabel(code) {
+    if (!code) return '(未設定)';
+    if (code === 'Space') return 'Space';
+    if (code === 'Comma') return '<';
+    if (code === 'Period') return '>';
+    if (code.startsWith('Arrow')) return { ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓' }[code];
+    if (code.startsWith('Key')) return code.slice(3);
+    if (code.startsWith('Digit')) return code.slice(5);
+    return code;
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (listeningFor) {
+      e.preventDefault();
+      // 「<」のようにShiftと一緒に押すキーを割り当てられるよう、Shift等の単独押しは無視する
+      if (MODIFIER_CODES.includes(e.code)) return;
+      Object.keys(settings.bindings).forEach(a => {
+        if (settings.bindings[a] === e.code) settings.bindings[a] = '';
+      });
+      settings.bindings[listeningFor] = e.code;
+      listeningFor = null;
+      saveSettings();
+      renderBindRows();
+      return;
+    }
+    // 設定画面の入力欄・選択欄を操作しているときは、ショートカットを働かせない
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    // 大きく表示しているときは Esc で元に戻す
+    if (e.code === 'Escape' && document.body.classList.contains('video-full')) { setVideoFull(false); return; }
+    const action = Object.keys(settings.bindings).find(a => settings.bindings[a] === e.code);
+    if (action && ACTION_FN[action]) {
+      e.preventDefault();
+      ACTION_FN[action]();
+    }
+  });
+
+  const settingsOverlay = document.getElementById('settingsOverlay');
+  const bindRows = document.getElementById('bindRows');
+  document.getElementById('settingsBtn').addEventListener('click', () => {
+    renderBindRows();
+    settingsOverlay.classList.add('active');
+  });
+  function closeSettings() {
+    listeningFor = null;
+    settingsOverlay.classList.remove('active');
+  }
+  document.getElementById('closeSettings').addEventListener('click', closeSettings);
+  settingsOverlay.addEventListener('click', (e) => {
+    if (e.target === settingsOverlay) closeSettings();
+  });
+
+  function renderBindRows() {
+    bindRows.innerHTML = '';
+    ACTIONS.forEach(a => {
+      const row = document.createElement('div');
+      row.className = 'bind-row';
+      const code = settings.bindings[a.id];
+      row.innerHTML = `<span class="label">${actionLabel(a)}</span>`;
+      const btn = document.createElement('button');
+      btn.className = 'key-btn';
+      btn.textContent = listeningFor === a.id ? 'キーを押す…' : codeToLabel(code);
+      if (listeningFor === a.id) btn.classList.add('listening');
+      btn.addEventListener('click', () => { listeningFor = a.id; renderBindRows(); });
+      row.appendChild(btn);
+      bindRows.appendChild(row);
+    });
+  }
+</script>
+</body>
+</html>
