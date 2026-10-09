@@ -931,9 +931,10 @@
     stopWatch();
     if (!timeline || currentIndex < 0 || audioEl.paused) return;
     if ((settings.mode || 'stop') === 'continuous') { followPlayback(); return; }
-    const end = items[currentIndex].end;
+    let end = stopAt(currentIndex);
     const check = () => {
       if (audioEl.paused) { stopWatch(); return true; }
+      end = stopAt(currentIndex);                 // 遅れを測り直したら、止める時刻もその場で変える
       if (audioEl.currentTime >= end) { onSegmentEnd(); return true; }
       return false;
     };
@@ -972,6 +973,49 @@
     };
     arm();
   }
+  // 止める合図から実際に音が止まるまでの遅れ（スピーカー・Bluetooth のイヤホンなどの出力の遅れ）。ブラウザが知っている値を使う。
+  // 次の文がすぐ続く所でこの遅れの分だけ遅く止まると、次の文の頭が聞こえる（ユーザー指摘：BTTF「次の文の最初の単語がまるまる読まれる」）
+  let outLatency = 0;
+  // 2026-10-06：遅れは最初の1回だけでなく、再生のたびと音の出し先が変わったときに測り直す。
+  //   1回だけだと、Bluetooth スピーカーで測った長い遅れのままパソコンのスピーカーに戻し、語尾まで早めに止めて削れた
+  //   （ユーザー指摘：X-Files S01E02「102行くらいから5文に1文くらい文の終わりが欠ける」）。
+  // また、開いている間は聞こえない無音を流し続ける。Bluetooth スピーカーは音が途切れると休み、次の文の頭の音を落とした
+  let actx = null;
+  function openAudio() {
+    try {
+      const C = window.AudioContext || window.webkitAudioContext;
+      if (!C) return;
+      if (actx) { try { actx.close(); } catch (e) {} }
+      actx = new C();
+      const o = actx.createOscillator(), g = actx.createGain();
+      g.gain.value = 0;                                  // 無音（出力の流れを保つだけ）
+      o.connect(g); g.connect(actx.destination); o.start();
+      actx.resume().then(() => setTimeout(readLatency, 300)).catch(() => {});
+    } catch (e) { actx = null; }
+  }
+  function readLatency() {
+    if (!actx) return;
+    outLatency = Math.min(0.5, Math.max(0, (actx.outputLatency || 0) + (actx.baseLatency || 0)));
+  }
+  let actxBorn = 0;
+  function measureLatency() {
+    // 音の出し先が変わったことをブラウザが知らせないこともあるので、20秒より古い測り方は作り直して測る
+    if (!actx || actx.state === 'closed' || Date.now() - actxBorn > 20000) { actxBorn = Date.now(); openAudio(); return; }
+    actx.resume().catch(() => {});
+    readLatency();
+  }
+  document.addEventListener('pointerdown', measureLatency);   // 音の出力はユーザーの操作のあとでないと始められない
+  document.addEventListener('keydown', measureLatency);
+  try { navigator.mediaDevices.addEventListener('devicechange', () => { if (actx) { actxBorn = Date.now(); openAudio(); } }); } catch (e) {}
+  // 文を止める時刻：次の文がすぐ続く（すき間が出力の遅れより短い）ときだけ、遅れの分だけ早める（文の長さの半分までに）
+  window.shadowOutLatency = () => outLatency;      // 確かめ用
+  function stopAt(i) {
+    const it = items[i], nx = items[i + 1];
+    if (!nx || !outLatency) return it.end;
+    const room = nx.start - it.end;
+    if (room >= outLatency) return it.end;
+    return Math.max(it.start + (it.end - it.start) / 2, it.end - (outLatency - room));
+  }
   function onSegmentEnd() {
     stopWatch();
     // 連続再生なら止めずに次の文へ飛ぶ（スマホで再生が止まらないように）
@@ -980,6 +1024,7 @@
   }
   // 再生する。失敗したら（ブラウザから離れて戻ったあとなど）動画を読み込み直して、同じ位置から再生し直す
   function safePlay() {
+    measureLatency();                                     // 音の出し先が変わっていても、今の遅れで止める
     const p = audioEl.play();
     if (p && p.catch) p.catch(err => {
       if (err && err.name === 'AbortError') return;          // 別の操作で取り消されただけ
@@ -1109,7 +1154,7 @@
     if (timeline && audioEl.paused) {
       // 文の終わりまで再生し終えていたら、その文の最初から
       const it = items[currentIndex];
-      if (audioEl.currentTime >= it.end - 0.02 || audioEl.currentTime < it.start - 0.5) { playFrom(it.start); return; }
+      if (audioEl.currentTime >= stopAt(currentIndex) - 0.02 || audioEl.currentTime < it.start - 0.5) { playFrom(it.start); return; }
     }
     if (audioEl.paused) safePlay(); else audioEl.pause();
   }
